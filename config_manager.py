@@ -87,13 +87,23 @@ class GhostWaveConfig:
     trim_duration: bool = True
     strip_metadata: bool = True
 
-    # Lyrics Moderation & Custom Blacklist
+    # Lyrics Moderation, Cloaking & Custom Blacklist
     custom_celebrity_blacklist: list[str] = field(default_factory=list)
     filter_profanity: bool = True
     strip_celebrities: bool = True
     normalize_unicode: bool = True
     format_tags: bool = True
     check_limits: bool = True
+    enable_lyrics_cloaking: bool = True
+    lyrics_cloak_mode: str = "scramble"           # "scramble", "syllable", "phonetic", "semantic", "cloud"
+    lyrics_preserve_syllables: bool = True
+    lyrics_add_vibrato_glides: bool = True
+    lyrics_break_ngrams: bool = False
+    lyrics_adlib_frequency: float = 0.5           # frequency of adlib insertions (0.0 to 1.0)
+    lyrics_cloud_provider: str = "groq"           # "groq", "openrouter", "openai", "custom"
+    lyrics_cloud_api_token: str = ""              # LLM API Token
+    lyrics_cloud_endpoint_url: str = ""           # Custom endpoint or base URL
+    lyrics_cloud_model: str = "llama-3.3-70b-versatile"
 
     def to_dict(self) -> dict[str, Any]:
         """Converts configuration dataclass to dictionary."""

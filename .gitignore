@@ -27,10 +27,15 @@ share/python-wheels/
 MANIFEST
 
 # PyInstaller
-#   Usually these files are written by a python script from a template
-#   before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+!ghostwave.spec
+
+# GhostWave encrypted vault and local credentials
+*.sn
+.ghostwave.sn
+suno_chunks/
+
 
 # Installer logs
 pip-log.txt

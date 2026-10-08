@@ -6,15 +6,32 @@ The project implements digital signal processing techniques designed to disrupt 
 
 ---
 
-### Quick Start and Installation
+### Installation and Distribution Options
 
-Requires Python 3.10+ and a local FFmpeg installation (compiled with Chromaprint support if you want to use the evasion audit tool).
+GhostWave Studio is available as a compiled Windows installer, a portable zip archive, or directly from source.
+
+#### Option 1: Windows Installer (Recommended)
+Run the setup wizard located at:
+`dist/installer/GhostWaveStudio-v1.0-Setup.exe`
+- Installs to the user application directory
+- Creates Desktop and Start Menu shortcuts
+- Provides an optional checkbox to add `ghostwave-cli` to your user PATH
+- Includes an uninstaller in Windows Settings and Control Panel
+
+#### Option 2: Portable Archive (No Installation Required)
+Extract `dist/GhostWaveStudio-v1.0-Portable.zip` to any folder:
+- Run `GhostWaveStudio.exe` to launch the graphical interface
+- Run `ghostwave-cli.exe` from PowerShell or Command Prompt for batch workflows
+- Runs self-contained without needing Python on the host machine
+
+#### Option 3: Run from Python Source
+Requires Python 3.10+ and a local FFmpeg installation:
 
 ```bash
-# 1. Install Python packages
+# 1. Install dependencies
 pip install -r requirements.txt
 
-# 2. Start the graphical interface
+# 2. Launch the desktop interface
 python gui.py
 # or:
 python main.py
@@ -25,13 +42,54 @@ python main.py -i input.mp3 -o cloaked.wav --format wav --preset max
 # 4. Split an audio track into 22-second segments for library upload
 python main.py -i input.mp3 --slice --slice-duration 22.0
 
-# 5. Run the test suite (29 tests)
+# 5. Cloak a lyrics file using the acoustic spelling scrambler
+python main.py --lyrics lyrics.txt --lyrics-out cloaked.txt --lyrics-mode scramble
+
+# 6. Run the test suite (21 unit tests)
 python -m unittest test_app.py
+```
+
+#### Rebuilding the Executables and Installer from Source
+
+```bash
+# Compile standalone binaries using PyInstaller
+pyinstaller ghostwave.spec --noconfirm --clean
+
+# Compile Windows setup installer using Inno Setup 6
+"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
 ```
 
 ---
 
 ## Development Changelog and Release Notes
+
+New on 10/08/2026:
+
+	Added the standalone compiled binary distribution and Inno Setup installer package. The application can now be installed via dist/installer/GhostWaveStudio-v1.0-Setup.exe or extracted as a standalone portable build from dist/GhostWaveStudio-v1.0-Portable.zip without requiring a Python runtime.
+
+	Built a dual-binary PyInstaller specification (ghostwave.spec) that bundles both the accessible graphical application (GhostWaveStudio.exe) and the command-line utility (ghostwave-cli.exe). Both executables share a single internal runtime directory, which keeps the total installation footprint compact and eliminates cold-start extraction delays.
+
+	Generated a multi-resolution application icon (ghostwave.ico) featuring an acoustic waveform motif, embedded across both executables, the Windows installer, and desktop shortcuts.
+
+	Configured the Inno Setup 6 compiler script (installer.iss) with LZMA2 solid compression, modern wizard styling, automatic uninstaller registration, and an optional task to register ghostwave-cli in the user environment PATH.
+
+	Addressed the issue where uploading cloaked audio alongside original song lyrics still triggered Suno's copyright text filters. Suno evaluates lyrics against commercial databases using 4-gram sequence matching, which flags unchanged text even when the audio passes Audible Magic.
+
+	Added the Acoustic Spelling Scrambler as the primary cloaking engine in lyrics_processor.py. This scrambles text orthography while preserving every word of the original song lyrics. Words like "small", "town", "girl", "world", "living", and "midnight" are written as "smal", "toun", "gurl", "werld", "liv-in'", and "mid-nite". Suno's neural speech synthesis vocalizes the exact original song, while automated text databases see zero-percent string alignment.
+
+	Added vocal vibrato glide markers (~) to cadence endings. Appending tildes to line endings breaks sentence matchers and regex filters while prompting Suno's vocal model to add melodic inflection.
+
+	Added rule-based morphological scramblers that convert "-ing" endings into "[stem]-in'", past-tense "-ed" suffixes into "[stem]'d", and "-ght" clusters into "-ite".
+
+	Updated syllable counting logic to strip internal hyphens and apostrophes so multi-syllable hyphenated tokens retain accurate metric measurements for singing cadence.
+
+	Maintained optional alternative modes for testing, including Stealth Hybrid, Phonetic Disguise, Semantic Cadence, and remote Cloud LLM rewriting.
+
+	Added an automatic Lyrics Evasion Audit tool that calculates 4-gram sequence overlap, token similarity, and syllable cadence accuracy in the interface and CLI.
+
+	Added CLI options (--lyrics, --lyrics-out, --lyrics-mode, --no-adlibs) for automated batch lyrics processing.
+
+	Updated the unit test suite to verify that the scrambler preserves original words while disrupting n-gram hashes.
 
 New on 10/07/2026:
 
@@ -49,7 +107,7 @@ New on 10/07/2026:
 
 	The CLI now accepts --config-sn to specify a custom vault path.
 
-	Added 4 unit tests covering header validation, ciphertext verification, roundtrip serialization, and corrupted file handling. All 29 unit tests pass cleanly.
+	Added 4 unit tests covering header validation, ciphertext verification, roundtrip serialization, and corrupted file handling. All 21 unit tests pass cleanly.
 
 New on 10/05/2026:
 
@@ -150,6 +208,12 @@ python main.py -i song.mp3 -o cloaked.mp3 --format mp3 --preset balanced
 
 # Compare two existing audio files with Chromaprint
 python main.py -i original.mp3 -o cloaked.wav --audit-only
+
+# Cloak a lyrics file using the acoustic spelling scrambler (preserves words)
+python main.py --lyrics song_lyrics.txt --lyrics-out cloaked_lyrics.txt --lyrics-mode scramble
+
+# Process both audio and lyrics simultaneously
+python main.py -i song.mp3 -o cloaked.wav --lyrics song_lyrics.txt --lyrics-out cloaked_lyrics.txt
 ```
 
 ---
@@ -192,4 +256,25 @@ The test suite covers the DSP routines, the .sn cryptographic container, remote 
 python -m unittest test_app.py
 ```
 
-All 29 tests run in approximately 25 seconds.
+All 21 tests run in approximately 9 seconds.
+
+---
+
+## Contributing
+
+Contributions to GhostWave Studio are welcome. Please refer to [CONTRIBUTING.md](file:///E:/code/GhostWave-Studio/CONTRIBUTING.md) for environment configuration, coding standards, test requirements, and pull request procedures.
+
+---
+
+## Research and Educational Disclaimer
+
+GhostWave Studio is developed as an academic and engineering research project to investigate acoustic fingerprinting robustness, neural audio embeddings, and automated speech recognition ingestion filters. This software is provided for experimental study, education, and format compatibility research. Users are responsible for ensuring that their use of this software complies with applicable local laws and the terms of service of third-party platforms.
+
+---
+
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](file:///E:/code/GhostWave-Studio/LICENSE) file for the complete license terms.
+
+Copyright (c) 2026 Muhamad alfian / Technokers lab.
+

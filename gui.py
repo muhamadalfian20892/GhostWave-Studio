@@ -260,6 +260,124 @@ class CloudApiDialog(wx.Dialog):
         self.EndModal(wx.ID_OK)
 
 
+class LyricsCloudDialog(wx.Dialog):
+    """
+    Accessible dialog for configuring remote LLM API credentials for lyrics cloaking.
+    """
+
+    def __init__(self, parent: wx.Window):
+        super().__init__(
+            parent,
+            title="Lyrics Cloud LLM Settings - GhostWave Studio v1.0",
+            style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
+            size=(560, 420)
+        )
+        self.SetName("Lyrics Cloud LLM Settings Dialog")
+        from config_manager import GhostWaveConfig
+        self.config = GhostWaveConfig.load()
+
+        panel = wx.Panel(self, style=wx.TAB_TRAVERSAL)
+        panel.SetName("Lyrics Cloud Settings Panel")
+
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+        info_label = wx.StaticText(
+            panel,
+            label="Configure remote LLM credentials for automated lyrics cloaking.\n"
+                  "API keys are encrypted inside the GhostWave .sn vault.\n"
+                  "Zero models or checkpoint files are downloaded to this device."
+        )
+        info_label.SetName("Lyrics Cloud Info Label")
+        main_sizer.Add(info_label, 0, wx.ALL, 12)
+
+        grid = wx.FlexGridSizer(cols=2, vgap=12, hgap=12)
+        grid.AddGrowableCol(1, 1)
+
+        prov_label = wx.StaticText(panel, label="LLM Provider:")
+        prov_label.SetName("LLM Provider Label")
+        grid.Add(prov_label, 0, wx.ALIGN_CENTER_VERTICAL)
+
+        self.provider_choice = wx.Choice(
+            panel,
+            choices=["Groq (Fastest & Free Tier)", "OpenRouter (Multi-model)", "OpenAI (GPT-4o mini)", "Custom OpenAI-Compatible"],
+            name="LLM Provider Selection"
+        )
+        p = self.config.lyrics_cloud_provider.lower()
+        if "groq" in p:
+            self.provider_choice.SetSelection(0)
+        elif "openrouter" in p:
+            self.provider_choice.SetSelection(1)
+        elif "openai" in p:
+            self.provider_choice.SetSelection(2)
+        else:
+            self.provider_choice.SetSelection(3)
+        grid.Add(self.provider_choice, 0, wx.EXPAND)
+
+        tok_label = wx.StaticText(panel, label="API Key / Token:")
+        tok_label.SetName("Lyrics API Token Label")
+        grid.Add(tok_label, 0, wx.ALIGN_CENTER_VERTICAL)
+
+        self.token_ctrl = wx.TextCtrl(
+            panel,
+            value=self.config.lyrics_cloud_api_token,
+            style=wx.TE_PASSWORD,
+            name="Lyrics API Token Input"
+        )
+        self.token_ctrl.SetToolTip("Enter API token for remote lyrics rewriting.")
+        grid.Add(self.token_ctrl, 0, wx.EXPAND)
+
+        mod_label = wx.StaticText(panel, label="Model Identifier:")
+        mod_label.SetName("Model Identifier Label")
+        grid.Add(mod_label, 0, wx.ALIGN_CENTER_VERTICAL)
+
+        self.model_ctrl = wx.TextCtrl(
+            panel,
+            value=self.config.lyrics_cloud_model or "llama-3.3-70b-versatile",
+            name="Model Identifier Input"
+        )
+        self.model_ctrl.SetToolTip("Target LLM model name (e.g. llama-3.3-70b-versatile, gpt-4o-mini).")
+        grid.Add(self.model_ctrl, 0, wx.EXPAND)
+
+        url_label = wx.StaticText(panel, label="Endpoint URL (Optional):")
+        url_label.SetName("Lyrics Endpoint URL Label")
+        grid.Add(url_label, 0, wx.ALIGN_CENTER_VERTICAL)
+
+        self.url_ctrl = wx.TextCtrl(
+            panel,
+            value=self.config.lyrics_cloud_endpoint_url,
+            name="Lyrics Endpoint URL Input"
+        )
+        self.url_ctrl.SetToolTip("Custom base URL (leave blank for provider default).")
+        grid.Add(self.url_ctrl, 0, wx.EXPAND)
+
+        main_sizer.Add(grid, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
+
+        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.cancel_btn = wx.Button(panel, wx.ID_CANCEL, label="&Cancel", name="Cancel Lyrics Cloud Button")
+        btn_sizer.Add(self.cancel_btn, 0, wx.RIGHT, 10)
+
+        self.save_btn = wx.Button(panel, wx.ID_OK, label="&Save Settings", name="Save Lyrics Cloud Button")
+        self.save_btn.Bind(wx.EVT_BUTTON, self.on_save)
+        self.save_btn.SetDefault()
+        btn_sizer.Add(self.save_btn, 0)
+        main_sizer.Add(btn_sizer, 0, wx.ALIGN_RIGHT | wx.ALL, 12)
+
+        panel.SetSizer(main_sizer)
+        dlg_sizer = wx.BoxSizer(wx.VERTICAL)
+        dlg_sizer.Add(panel, 1, wx.EXPAND)
+        self.SetSizer(dlg_sizer)
+        self.CentreOnParent()
+
+    def on_save(self, event: wx.CommandEvent):
+        sel = self.provider_choice.GetSelection()
+        prov_map = ["groq", "openrouter", "openai", "custom"]
+        self.config.lyrics_cloud_provider = prov_map[sel] if sel < len(prov_map) else "groq"
+        self.config.lyrics_cloud_api_token = self.token_ctrl.GetValue().strip()
+        self.config.lyrics_cloud_model = self.model_ctrl.GetValue().strip()
+        self.config.lyrics_cloud_endpoint_url = self.url_ctrl.GetValue().strip()
+        self.config.save()
+        self.EndModal(wx.ID_OK)
+
+
 class EvasionAuditDialog(wx.Dialog):
     """
     Accessible Dialog presenting quantitative acoustic evasion benchmark results.
@@ -1251,18 +1369,17 @@ class LyricsSanitizerPanel(wx.Panel):
         self.input_text_ctrl = wx.TextCtrl(
             self,
             style=wx.TE_MULTILINE,
-            size=(-1, 140),
+            size=(-1, 130),
             name="Original Lyrics Input"
         )
         self.input_text_ctrl.SetToolTip("Type or paste your original lyrics here.")
         main_sizer.Add(self.input_text_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
-        # Section 2: Sanitizer Rules & Toggles
-        rules_box = wx.StaticBox(self, label="2. Sanitization Rules & Moderation Filters")
-        rules_box.SetName("Sanitization Rules Group")
+        # Section 2: Moderation Filters & Structural Standards
+        rules_box = wx.StaticBox(self, label="2. Moderation Filters & Structural Standards")
+        rules_box.SetName("Moderation Rules Group")
         rules_box_sizer = wx.StaticBoxSizer(rules_box, wx.VERTICAL)
 
-        # Celebrity Strip Checkbox + Edit Blacklist Button
         celeb_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.celeb_chk = wx.CheckBox(
             self,
@@ -1270,7 +1387,7 @@ class LyricsSanitizerPanel(wx.Panel):
             name="Strip known artist and celebrity names"
         )
         self.celeb_chk.SetValue(True)
-        self.celeb_chk.SetToolTip("Replaces names of copyright artists and celebrities with safe generic tags to prevent Suno prompt rejection.")
+        self.celeb_chk.SetToolTip("Replaces names of copyright artists and celebrities with generic tags.")
         celeb_sizer.Add(self.celeb_chk, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 15)
 
         self.edit_blacklist_btn = wx.Button(
@@ -1278,23 +1395,20 @@ class LyricsSanitizerPanel(wx.Panel):
             label="Edit &Blacklist...",
             name="Edit Celebrity Blacklist Button"
         )
-        self.edit_blacklist_btn.SetToolTip("View and edit the blacklist of celebrity and artist names (Hotkey: Alt+B in this tab).")
+        self.edit_blacklist_btn.SetToolTip("View and edit the blacklist of celebrity and artist names.")
         self.edit_blacklist_btn.Bind(wx.EVT_BUTTON, self.on_edit_blacklist)
         celeb_sizer.Add(self.edit_blacklist_btn, 0, wx.ALIGN_CENTER_VERTICAL)
+        rules_box_sizer.Add(celeb_sizer, 0, wx.ALL, 4)
 
-        rules_box_sizer.Add(celeb_sizer, 0, wx.ALL, 5)
-
-        # Profanity Checkbox
         self.profanity_chk = wx.CheckBox(
             self,
             label="Filter profanity and flagged slurs",
             name="Filter profanity and flagged slurs"
         )
         self.profanity_chk.SetValue(True)
-        self.profanity_chk.SetToolTip("Replaces explicit language and slurs with musical, safe homophones and mild alternatives while preserving rhythm.")
-        rules_box_sizer.Add(self.profanity_chk, 0, wx.ALL, 5)
+        self.profanity_chk.SetToolTip("Replaces explicit language and slurs with musical, safe homophones.")
+        rules_box_sizer.Add(self.profanity_chk, 0, wx.ALL, 4)
 
-        # Unicode Normalization Checkbox
         self.unicode_chk = wx.CheckBox(
             self,
             label="Normalize non-standard characters and diacritics to clean UTF-8",
@@ -1302,49 +1416,122 @@ class LyricsSanitizerPanel(wx.Panel):
         )
         self.unicode_chk.SetValue(True)
         self.unicode_chk.SetToolTip("Flattens accents, replaces smart typographic quotes and dashes, and strips non-printable characters.")
-        rules_box_sizer.Add(self.unicode_chk, 0, wx.ALL, 5)
+        rules_box_sizer.Add(self.unicode_chk, 0, wx.ALL, 4)
 
-        # Structural Tags Checkbox
         self.tags_chk = wx.CheckBox(
             self,
-            label="Auto-format Suno structural tags",
+            label="Auto-format Suno structural tags ([Verse], [Chorus], [Drop])",
             name="Auto-format Suno structural tags"
         )
         self.tags_chk.SetValue(True)
-        self.tags_chk.SetToolTip("Standardizes cues like [Verse], [Chorus], [Drop], [Bridge], [Outro] and fixes nested or broken brackets.")
-        rules_box_sizer.Add(self.tags_chk, 0, wx.ALL, 5)
+        self.tags_chk.SetToolTip("Standardizes cues like [Verse], [Chorus], [Drop], [Bridge], [Outro] and fixes nested brackets.")
+        rules_box_sizer.Add(self.tags_chk, 0, wx.ALL, 4)
 
-        # Length Limiter Checkbox
         self.length_chk = wx.CheckBox(
             self,
             label="Character & line length limiter",
             name="Character and line length limiter"
         )
         self.length_chk.SetValue(True)
-        self.length_chk.SetToolTip("Audits line lengths against the recommended 80-char ceiling and flags prompts exceeding Suno's 3,000 token limit.")
-        rules_box_sizer.Add(self.length_chk, 0, wx.ALL, 5)
+        self.length_chk.SetToolTip("Audits line lengths against the recommended 80-char ceiling and 3,000 token limit.")
+        rules_box_sizer.Add(self.length_chk, 0, wx.ALL, 4)
 
-        main_sizer.Add(rules_box_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        main_sizer.Add(rules_box_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
-        # Section 3: Action Buttons
+        # Section 3: Copyright Evasion & Lyrics Cloaking Engine
+        cloak_box = wx.StaticBox(self, label="3. Copyright Evasion & Lyrics Cloaking Engine")
+        cloak_box.SetName("Lyrics Cloaking Group")
+        cloak_box_sizer = wx.StaticBoxSizer(cloak_box, wx.VERTICAL)
+
+        self.cloak_chk = wx.CheckBox(
+            self,
+            label="Enable copyright evasion cloaking (breaks database n-gram detection)",
+            name="Enable copyright evasion cloaking"
+        )
+        self.cloak_chk.SetValue(True)
+        self.cloak_chk.SetToolTip("Transforms lyrics using acoustic and cadence disguises so copyright database checks pass.")
+        cloak_box_sizer.Add(self.cloak_chk, 0, wx.ALL, 4)
+
+        mode_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        mode_lbl = wx.StaticText(self, label="Cloaking Strategy:")
+        mode_lbl.SetName("Cloaking Strategy Label")
+        mode_sizer.Add(mode_lbl, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+
+        self.cloak_mode_choice = wx.Choice(
+            self,
+            choices=[
+                "Acoustic Spelling Scrambler (Preserves Original Lyrics) [Recommended]",
+                "Stealth Hybrid (Acoustic Disguise + Musical Ad-libs)",
+                "Phonetic Disguise (Acoustic Homophones Only)",
+                "Semantic Cadence (Syllable-Preserved Synonyms)",
+                "Cloud API Rewriter (Remote LLM)"
+            ],
+            name="Lyrics Cloaking Mode Selection"
+        )
+        self.cloak_mode_choice.SetSelection(0)
+        self.cloak_mode_choice.SetToolTip("Select cloaking strategy. Scrambler mode disrupts orthography while preserving exact song words and vocal flow.")
+        mode_sizer.Add(self.cloak_mode_choice, 1, wx.EXPAND | wx.RIGHT, 10)
+
+        self.cloud_llm_btn = wx.Button(
+            self,
+            label="Cloud &LLM Settings...",
+            name="Lyrics Cloud LLM Settings Button"
+        )
+        self.cloud_llm_btn.SetToolTip("Configure Groq, OpenRouter, or OpenAI API credentials in the .sn vault.")
+        self.cloud_llm_btn.Bind(wx.EVT_BUTTON, self.on_cloud_llm_settings)
+        mode_sizer.Add(self.cloud_llm_btn, 0)
+        cloak_box_sizer.Add(mode_sizer, 0, wx.EXPAND | wx.ALL, 4)
+
+        toggles_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.vibrato_chk = wx.CheckBox(
+            self,
+            label="Add vocal vibrato glides (~) to phrase cadences",
+            name="Add vocal vibrato glides to phrase cadences"
+        )
+        self.vibrato_chk.SetValue(True)
+        self.vibrato_chk.SetToolTip("Appends singing vibrato glides (~) to phrase endings to disrupt regex matchers while signaling singing inflection to Suno.")
+        toggles_sizer.Add(self.vibrato_chk, 0, wx.RIGHT, 15)
+
+        self.syllable_chk = wx.CheckBox(
+            self,
+            label="Preserve musical syllable meter per line",
+            name="Preserve musical syllable meter per line"
+        )
+        self.syllable_chk.SetValue(True)
+        self.syllable_chk.SetToolTip("Ensures every rewritten line maintains the original syllable count so it fits the audio backing track.")
+        toggles_sizer.Add(self.syllable_chk, 0, wx.RIGHT, 15)
+
+        self.ngram_chk = wx.CheckBox(
+            self,
+            label="Inject rhythmic backing ad-libs (yeah, oh)",
+            name="Inject rhythmic backing ad-libs"
+        )
+        self.ngram_chk.SetValue(False)
+        self.ngram_chk.SetToolTip("Injects musical ad-libs to break sequence matchers without disrupting vocals.")
+        toggles_sizer.Add(self.ngram_chk, 0)
+        cloak_box_sizer.Add(toggles_sizer, 0, wx.ALL, 4)
+
+        main_sizer.Add(cloak_box_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+
+        # Section 4: Action Buttons
         action_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         self.sanitize_btn = wx.Button(
             self,
-            label="&Sanitize Lyrics",
-            name="Sanitize Lyrics Button"
+            label="&Sanitize & Cloak Lyrics",
+            name="Sanitize and Cloak Lyrics Button"
         )
-        self.sanitize_btn.SetToolTip("Run moderation filters, structural tag formatting, and Unicode cleanup (Hotkey: Alt+S).")
+        self.sanitize_btn.SetToolTip("Run moderation filters and copyright evasion cloaking (Hotkey: Alt+S).")
         self.sanitize_btn.Bind(wx.EVT_BUTTON, self.on_sanitize)
         self.sanitize_btn.SetDefault()
         action_sizer.Add(self.sanitize_btn, 0, wx.RIGHT, 10)
 
         self.copy_btn = wx.Button(
             self,
-            label="&Copy Sanitized Lyrics to Clipboard",
-            name="Copy Sanitized Lyrics to Clipboard Button"
+            label="&Copy Cloaked Lyrics to Clipboard",
+            name="Copy Cloaked Lyrics to Clipboard Button"
         )
-        self.copy_btn.SetToolTip("Copy the sanitized output lyrics to system clipboard (Hotkey: Alt+C).")
+        self.copy_btn.SetToolTip("Copy the cloaked output lyrics to system clipboard (Hotkey: Alt+C).")
         self.copy_btn.Bind(wx.EVT_BUTTON, self.on_copy)
         action_sizer.Add(self.copy_btn, 0, wx.RIGHT, 10)
 
@@ -1353,7 +1540,7 @@ class LyricsSanitizerPanel(wx.Panel):
             label="Load &Sample Lyrics",
             name="Load Sample Lyrics Button"
         )
-        self.sample_btn.SetToolTip("Insert sample test lyrics containing artist names, profanities, and tags.")
+        self.sample_btn.SetToolTip("Insert sample test lyrics containing copyright lines, artist names, and tags.")
         self.sample_btn.Bind(wx.EVT_BUTTON, self.on_load_sample)
         action_sizer.Add(self.sample_btn, 0, wx.RIGHT, 10)
 
@@ -1368,33 +1555,33 @@ class LyricsSanitizerPanel(wx.Panel):
 
         main_sizer.Add(action_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
-        # Section 4: Sanitized Output & Changes Made Log
+        # Section 5: Sanitized Output & Changes Made Log
         out_splitter = wx.BoxSizer(wx.VERTICAL)
 
-        out_label = wx.StaticText(self, label="3. Sanitized Lyrics Output:")
+        out_label = wx.StaticText(self, label="4. Sanitized & Cloaked Lyrics Output:")
         out_label.SetName("Sanitized Lyrics Output Label")
         out_splitter.Add(out_label, 0, wx.BOTTOM, 4)
 
         self.output_text_ctrl = wx.TextCtrl(
             self,
             style=wx.TE_MULTILINE,
-            size=(-1, 140),
+            size=(-1, 130),
             name="Sanitized Lyrics Output"
         )
-        self.output_text_ctrl.SetToolTip("Final sanitized lyrics ready to paste into Suno AI.")
+        self.output_text_ctrl.SetToolTip("Final cloaked lyrics ready to paste into Suno AI.")
         out_splitter.Add(self.output_text_ctrl, 1, wx.EXPAND | wx.BOTTOM, 8)
 
-        changes_label = wx.StaticText(self, label="Changes Made & Moderation Analysis:")
+        changes_label = wx.StaticText(self, label="Changes Made & Copyright Evasion Audit:")
         changes_label.SetName("Changes Made Label")
         out_splitter.Add(changes_label, 0, wx.BOTTOM, 4)
 
         self.changes_ctrl = wx.TextCtrl(
             self,
             style=wx.TE_MULTILINE | wx.TE_READONLY,
-            size=(-1, 110),
+            size=(-1, 120),
             name="Changes Made"
         )
-        self.changes_ctrl.SetToolTip("Audit trail of every replacement, standardized cue, and character limit notification.")
+        self.changes_ctrl.SetToolTip("Audit report of copyright evasion metrics, token similarity, and applied changes.")
         out_splitter.Add(self.changes_ctrl, 1, wx.EXPAND)
 
         main_sizer.Add(out_splitter, 2, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
@@ -1407,23 +1594,27 @@ class LyricsSanitizerPanel(wx.Panel):
         dlg.Destroy()
         self.set_status(f"Celebrity blacklist updated ({len(self.processor.celebrity_blacklist)} entries).")
 
+    def on_cloud_llm_settings(self, event: wx.CommandEvent):
+        dlg = LyricsCloudDialog(self)
+        if dlg.ShowModal() == wx.ID_OK:
+            self.set_status("Lyrics Cloud LLM settings saved to .sn vault.")
+        dlg.Destroy()
+
     def on_load_sample(self, event: wx.CommandEvent):
         sample_lyrics = (
-            "(intro: heavy synth)\n"
-            "Verse 1:\n"
+            "[Verse 1]\n"
+            "Just a small town girl, living in a lonely world\n"
+            "She took the midnight train going anywhere\n"
             "I saw Taylor Swift and Drake chilling at the late night spot\n"
-            "We were talking big dreams, giving everything we got\n"
-            "Fuck the haters and the bullshit that they're spreading around\n"
-            "[[Chorus]]\n"
-            "We make the bass drop so hard it shakes up the whole damn ground!\n"
-            "She said “It’s naïve to hesitate when destiny is calling your name,”\n"
-            "And this ridiculously extended sentence goes on and on far exceeding the recommended eighty characters per line limit!\n"
-            "(drop)\n"
-            "Outro:\n"
+            "Giving everything we got, forget the bullshit around\n"
+            "[Chorus]\n"
+            "Don't stop believing, hold on to that feeling\n"
+            "Streetlights, people, living just to find emotion\n"
+            "[Outro]\n"
             "Fade out into silence."
         )
         self.input_text_ctrl.SetValue(sample_lyrics)
-        self.set_status("Loaded sample lyrics into input.")
+        self.set_status("Loaded sample copyright lyrics into input.")
         self.sanitize_btn.SetFocus()
 
     def on_clear(self, event: wx.CommandEvent):
@@ -1446,26 +1637,51 @@ class LyricsSanitizerPanel(wx.Panel):
             self.input_text_ctrl.SetFocus()
             return
 
+        mode_idx = self.cloak_mode_choice.GetSelection()
+        mode_map = ["scramble", "hybrid", "phonetic", "semantic", "cloud"]
+        selected_mode = mode_map[mode_idx] if mode_idx < len(mode_map) else "scramble"
+
+        from config_manager import GhostWaveConfig
+        sn_cfg = GhostWaveConfig.load()
+
         result: LyricsSanitizeResult = self.processor.sanitize(
             text=raw_text,
             strip_celebrities=self.celeb_chk.IsChecked(),
             filter_profanity=self.profanity_chk.IsChecked(),
             normalize_unicode=self.unicode_chk.IsChecked(),
             format_tags=self.tags_chk.IsChecked(),
-            check_limits=self.length_chk.IsChecked()
+            check_limits=self.length_chk.IsChecked(),
+            cloak_lyrics=self.cloak_chk.IsChecked(),
+            cloak_mode=selected_mode,
+            add_vibrato_glides=self.vibrato_chk.IsChecked(),
+            preserve_syllables=self.syllable_chk.IsChecked(),
+            break_ngrams=self.ngram_chk.IsChecked(),
+            cloud_token=sn_cfg.lyrics_cloud_api_token,
+            cloud_provider=sn_cfg.lyrics_cloud_provider,
+            cloud_model=sn_cfg.lyrics_cloud_model,
+            cloud_endpoint=sn_cfg.lyrics_cloud_endpoint_url
         )
 
         self.output_text_ctrl.SetValue(result.sanitized_text)
 
         log_sections = []
+        if result.audit:
+            aud = result.audit
+            log_sections.append("=== COPYRIGHT EVASION AUDIT ===")
+            log_sections.append(f"Verdict: {aud.evasion_verdict}")
+            log_sections.append(f"4-Gram Sequence Overlap: {aud.ngram_overlap_pct:.1f}%")
+            log_sections.append(f"Token Similarity: {aud.token_similarity_pct:.1f}%")
+            log_sections.append(f"Syllable Cadence Match: {aud.syllable_accuracy_pct:.1f}%")
+            log_sections.append(f"Original Words: {aud.original_words} -> Cloaked Words: {aud.cloaked_words}\n")
+
         log_sections.append("=== MODERATION & TRANSFORMATION AUDIT ===")
         for chg in result.changes:
-            log_sections.append(f"• {chg}")
+            log_sections.append(f"* {chg}")
 
         if result.warnings:
             log_sections.append("\n=== POTENTIAL ISSUES & WARNINGS ===")
             for warn in result.warnings:
-                log_sections.append(f"⚠ {warn}")
+                log_sections.append(f"Warning: {warn}")
 
         if result.stats:
             log_sections.append("\n=== LYRICS METRICS ===")
@@ -1481,7 +1697,7 @@ class LyricsSanitizerPanel(wx.Panel):
 
         change_count = len(result.changes)
         warning_count = len(result.warnings)
-        status_msg = f"Lyrics sanitized! {change_count} changes applied, {warning_count} warnings."
+        status_msg = f"Lyrics cloaked and sanitized! {change_count} changes applied, {warning_count} warnings."
         self.set_status(status_msg)
 
         wx.Bell()

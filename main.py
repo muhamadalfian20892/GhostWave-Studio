@@ -116,6 +116,62 @@ def run_cli(args: argparse.Namespace) -> int:
         return 1
 
 
+def run_lyrics_cli(args: argparse.Namespace) -> int:
+    """Executes lyrics sanitization and copyright evasion cloaking from CLI."""
+    lyrics_path = os.path.abspath(args.lyrics)
+    if not os.path.exists(lyrics_path):
+        print(f"Error: Lyrics file does not exist: {lyrics_path}")
+        return 1
+
+    with open(lyrics_path, "r", encoding="utf-8", errors="replace") as f:
+        raw_text = f.read()
+
+    from lyrics_processor import LyricsProcessor
+    vault = GhostWaveConfig.load(args.config_sn) if hasattr(args, "config_sn") and args.config_sn else GhostWaveConfig.load()
+    processor = LyricsProcessor()
+
+    result = processor.sanitize(
+        text=raw_text,
+        cloak_lyrics=True,
+        cloak_mode=args.lyrics_mode,
+        add_vibrato_glides=True,
+        preserve_syllables=True,
+        break_ngrams=not args.no_adlibs,
+        cloud_token=vault.lyrics_cloud_api_token,
+        cloud_provider=vault.lyrics_cloud_provider,
+        cloud_model=vault.lyrics_cloud_model,
+        cloud_endpoint=vault.lyrics_cloud_endpoint_url
+    )
+
+    print("\n" + "=" * 50)
+    print("GHOSTWAVE LYRICS CLOAKING REPORT")
+    print("=" * 50)
+    if result.audit:
+        aud = result.audit
+        print(f"Verdict:                 {aud.evasion_verdict}")
+        print(f"4-Gram Sequence Overlap: {aud.ngram_overlap_pct:.1f}%")
+        print(f"Token Similarity:        {aud.token_similarity_pct:.1f}%")
+        print(f"Syllable Cadence Match:  {aud.syllable_accuracy_pct:.1f}%")
+        print(f"Original Words:          {aud.original_words} -> Cloaked: {aud.cloaked_words}")
+
+    print("\nApplied Transformations:")
+    for chg in result.changes:
+        print(f"  * {chg}")
+
+    if args.lyrics_out:
+        out_path = os.path.abspath(args.lyrics_out)
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(result.sanitized_text)
+        print(f"\nCloaked lyrics written to: {out_path}")
+    else:
+        print("\nCloaked Lyrics Output:")
+        print("-" * 50)
+        print(result.sanitized_text)
+        print("-" * 50)
+
+    return 0
+
+
 def run_gui():
     """Initializes wx application loop and displays GhostWave Studio v1.0."""
     import wx
@@ -152,12 +208,22 @@ def main():
     parser.add_argument("--audit-only", action="store_true", help="Only run Chromaprint audit on existing files")
     parser.add_argument("--slice", action="store_true", help="Slice audio into ABS safe chunks for Suno Library upload")
     parser.add_argument("--slice-duration", type=float, default=22.0, help="Chunk duration in seconds for --slice (default: 22.0)")
+    parser.add_argument("--lyrics", help="Path to text file containing lyrics to cloak and sanitize")
+    parser.add_argument("--lyrics-out", help="Destination path for cloaked lyrics output file")
+    parser.add_argument("--lyrics-mode", choices=["scramble", "hybrid", "phonetic", "semantic", "cloud"], default="scramble", help="Lyrics cloaking strategy (default: scramble)")
+    parser.add_argument("--no-adlibs", action="store_true", help="Disable rhythmic ad-libs in lyrics cloaking")
     parser.add_argument("--gui", action="store_true", help="Explicitly launch graphical desktop user interface")
 
     args = parser.parse_args()
 
+    # If --lyrics is provided without audio input, process lyrics only
+    if args.lyrics and not args.input and not args.gui:
+        sys.exit(run_lyrics_cli(args))
+
     # If --input is provided, run CLI mode. Otherwise, launch GUI.
     if args.input and not args.gui:
+        if args.lyrics:
+            run_lyrics_cli(args)
         sys.exit(run_cli(args))
     else:
         run_gui()
