@@ -307,7 +307,147 @@ ACOUSTIC_PHONETIC_DISGUISE: dict[str, str] = {
     "breaking": "break-in'",
     "chasing": "chas-in'",
     "shining": "shin-in'",
-    "playing": "play-in'"
+    "playing": "play-in'",
+
+    # Indonesian & Multilingual Singing Vocabulary
+    "kuasai": "ku-a-sa-i",
+    "diriku": "di-ri-ku",
+    "tenanglah": "te-nang-lah",
+    "hatiku": "ha-ti-ku",
+    "hidupku": "hi-dup-ku",
+    "cintaku": "cin-ta-ku",
+    "mataku": "ma-ta-ku",
+    "jiwaku": "ji-wa-ku",
+    "ragaku": "ra-ga-ku",
+    "langkahku": "lang-kah-ku",
+    "mimpiku": "mim-pi-ku",
+    "jejakmu": "je-jak-mu",
+    "hatimu": "ha-ti-mu",
+    "cintamu": "cin-ta-mu",
+    "dirimu": "di-ri-mu",
+    "hidupmu": "hi-dup-mu",
+    "senyummu": "sen-yum-mu",
+    "tatapmu": "ta-tap-mu",
+    "pelukmu": "pe-luk-mu",
+    "dekapmu": "de-kap-mu",
+    "bersamaku": "ber-sa-ma-ku",
+    "bersamamu": "ber-sa-ma-mu",
+    "menepi": "me-ne-pi",
+    "menghapus": "meng-ha-pus",
+    "meneruskan": "me-ne-rus-kan",
+    "langkah": "lang-kah",
+    "melupakanmu": "me-lu-pa-kan-mu",
+    "mengingatmu": "me-nging-at-mu",
+    "merindukanmu": "me-rin-du-kan-mu",
+    "mencintaimu": "men-cin-tai-mu",
+    "lelah": "le-lah",
+    "hati": "ha-ti",
+    "jiwa": "ji-wa",
+    "menunggu": "me-nung-gu",
+    "menanti": "me-nan-ti",
+    "berharap": "ber-ha-rap",
+    "percaya": "per-ca-ya",
+    "cinta": "cin-ta",
+    "kasih": "ka-sih",
+    "sayang": "sa-yang",
+    "rindu": "rin-du",
+    "semu": "se-mu",
+    "goyah": "go-yah",
+    "jangan": "jan-gan",
+    "pernah": "per-nah",
+    "selalu": "s'la-lu",
+    "selamanya": "s'la-ma-nya",
+    "telah": "t'lah",
+    "sudah": "s'dah",
+    "seperti": "s'per-ti",
+    "semua": "s'mu-a",
+    "terlalu": "ter-la-lu",
+    "ketika": "k'ti-ka",
+    "karena": "kar'na",
+    "mengapa": "me-nga-pa",
+    "bagaimana": "ba-gai-ma-na",
+    "bukan": "bu-kan",
+    "hanya": "han-ya",
+    "dan": "d'n",
+    "yang": "y'ng",
+    "tak": "t'k",
+    "tidak": "ti-dak",
+    "dengan": "den-gan",
+    "untuk": "un-tuk",
+    "tentang": "ten-tang",
+    "kepada": "ke-pa-da",
+    "kembali": "kem-ba-li",
+    "pergi": "per-gi",
+    "hilang": "hi-lang",
+    "terbang": "ter-bang",
+    "bayang": "ba-yang",
+    "bayangan": "ba-yang-an",
+    "kenangan": "ke-nang-an",
+    "malam": "ma-lam",
+    "siang": "si-ang",
+    "pagi": "pa-gi",
+    "senja": "sen-ja",
+    "sore": "so-re",
+    "bintang": "bin-tang",
+    "bulan": "bu-lan",
+    "matahari": "ma-ta-ha-ri",
+    "langit": "la-ngit",
+    "bumi": "bu-mi",
+    "hujan": "hu-jan",
+    "angin": "a-ngin",
+    "dunia": "du-ni-a",
+    "mimpi": "mim-pi",
+    "nyata": "nya-ta",
+    "khayal": "kha-yal",
+    "sendiri": "sen-di-ri",
+    "bersama": "ber-sa-ma",
+    "berjalan": "ber-ja-lan",
+    "berjalanlah": "ber-ja-lan-lah",
+    "berlari": "ber-la-ri",
+    "terdiam": "ter-di-am",
+    "menangis": "me-na-ngis",
+    "tertawa": "ter-ta-wa",
+    "bahagia": "ba-ha-gi-a",
+    "duka": "du-ka",
+    "luka": "lu-ka",
+    "perih": "pe-rih",
+    "pedih": "pe-dih",
+    "sepi": "se-pi",
+    "sunyi": "sun-yi",
+    "waktu": "wak-tu",
+    "saat": "sa-at",
+    "detik": "de-tik",
+    "menit": "me-nit",
+    "jam": "jam",
+    "suara": "su-a-ra",
+    "nada": "na-da",
+    "lagu": "la-gu",
+    "musik": "mu-sik",
+    "rasa": "ra-sa",
+    "nafas": "na-fas",
+    "nafasmu": "na-fas-mu",
+    "nafasku": "na-fas-ku",
+    "indah": "in-dah",
+    "cantik": "can-tik",
+    "manis": "ma-nis",
+    "gelap": "ge-lap",
+    "terang": "te-rang",
+    "cahaya": "ca-ha-ya",
+    "kisah": "ki-sah",
+    "cerita": "ce-ri-ta",
+    "makna": "mak-na",
+    "arti": "ar-ti",
+    "bisa": "bi-sa",
+    "pasti": "pas-ti",
+    "mungkin": "mung-kin",
+    "ada": "a-da",
+    "kamu": "ka-mu",
+    "aku": "a-ku",
+    "kita": "ki-ta",
+    "dia": "di-a",
+    "mereka": "me-re-ka",
+    "ini": "i-ni",
+    "itu": "i-tu"
 }
 
 # Alias for backward compatibility
@@ -333,12 +473,94 @@ ADLIBS: list[str] = [
 ]
 
 
+# Multilingual Phonotactic Constants
+_MULTILINGUAL_DIGRAPHS: tuple[str, ...] = (
+    "ng", "ny", "kh", "sy", "ch", "sh", "th", "ph", "ll", "rr", "qu"
+)
+_CORE_VOWELS: str = "aeiouáéíóúàèìòùâêîôûäëïöü"
+
+
+def is_vocalic(ch: str, next_ch: Optional[str] = None) -> bool:
+    """Checks whether a character functions as a vowel in vocal synthesis."""
+    c = ch.lower()
+    if c in _CORE_VOWELS:
+        return True
+    if c == "y":
+        if next_ch and next_ch.lower() in _CORE_VOWELS:
+            return False
+        return True
+    return False
+
+
+def universal_syllabify(w: str) -> str:
+    """
+    Universal Multilingual Phonotactic Syllabifier.
+    Splits any Latin-script word into standard musical singing syllables using hyphens.
+    Works natively across Indonesian, English, Spanish, French, German, Italian, and Romaji.
+    """
+    if len(w) <= 3 or "-" in w or "'" in w:
+        return w
+
+    n = len(w)
+    v_count = sum(1 for idx, ch in enumerate(w) if is_vocalic(ch, w[idx + 1] if idx + 1 < n else None))
+    if v_count < 2:
+        return w
+
+    res: list[str] = []
+    i = 0
+    while i < n:
+        res.append(w[i])
+        cur_v = is_vocalic(w[i], w[i + 1] if i + 1 < n else None)
+        if i + 2 < n and cur_v:
+            c1 = w[i + 1]
+            c2 = w[i + 2]
+            c1_v = is_vocalic(c1, c2)
+            c2_v = is_vocalic(c2, w[i + 3] if i + 3 < n else None)
+
+            # Check for digraphs (e.g. ng, ny, kh, sy, ch, sh)
+            if i + 3 < n:
+                d1 = w[i + 1:i + 3].lower()
+                c3 = w[i + 3]
+                c3_v = is_vocalic(c3, w[i + 4] if i + 4 < n else None)
+                if d1 in _MULTILINGUAL_DIGRAPHS and c3_v:
+                    res.append("-")
+                    res.append(w[i + 1:i + 3])
+                    i += 3
+                    continue
+                elif d1 in _MULTILINGUAL_DIGRAPHS and not c3_v and i + 4 < n and is_vocalic(w[i + 4]):
+                    res.append(w[i + 1:i + 3])
+                    res.append("-")
+                    i += 3
+                    continue
+
+            # Standard phonotactics
+            if not c1_v and c2_v:
+                # V-CV: ki-sah, ma-lam, la-lu, da-tang, ha-ti, des-pa-ci-to
+                res.append("-")
+            elif not c1_v and not c2_v and i + 3 < n and is_vocalic(w[i + 3]):
+                # VC-CV: cin-ta, bin-tang, mim-pi, go-yah, per-nah
+                res.append(w[i + 1])
+                res.append("-")
+                i += 1
+        i += 1
+
+    out = "".join(res)
+    out = re.sub(r"-+", "-", out).strip("-")
+    return out if "-" in out else w
+
+
 def count_syllables(word: str) -> int:
-    """Estimates syllable count for English words, stripping punctuation and hyphens."""
-    w = word.lower().strip(".,!?;:'\"()[]{}~").replace("-", "").replace("'", "")
+    """Estimates syllable count for words across all languages, stripping punctuation and hyphens."""
+    w = word.lower().strip(".,!?;:'\"()[]{}~")
     if not w:
         return 0
-    if len(w) <= 3:
+    if "-" in w:
+        parts = [p for p in w.split("-") if p.strip()]
+        if parts:
+            return len(parts)
+
+    w_clean = w.replace("'", "")
+    if len(w_clean) <= 3:
         return 1
 
     known = {
@@ -349,19 +571,19 @@ def count_syllables(word: str) -> int:
         "somebody": 3, "nobody": 3, "everybody": 4, "monstrosity": 4,
         "silhouette": 3, "scaramouche": 3, "fandango": 3, "galileo": 4
     }
-    if w in known:
-        return known[w]
+    if w_clean in known:
+        return known[w_clean]
 
-    if w.endswith('e') and not (w.endswith('le') and len(w) > 2 and w[-3] not in 'aeiouy'):
-        w_proc = w[:-1]
+    if w_clean.endswith('e') and not (w_clean.endswith('le') and len(w_clean) > 2 and w_clean[-3] not in 'aeiouy'):
+        w_proc = w_clean[:-1]
     else:
-        w_proc = w
+        w_proc = w_clean
 
-    matches = re.findall(r'[aeiouy]+', w_proc)
+    matches = re.findall(r'[aeiouyáéíóúàèìòùâêîôûäëïöü]+', w_proc)
     count = len(matches)
 
-    for hiatus in ("eo", "ia", "io", "ua", "uo"):
-        if hiatus in w:
+    for hiatus in ("eo", "ia", "io", "ua", "uo", "ea", "oa"):
+        if hiatus in w_clean:
             count += 1
 
     return max(1, count)
@@ -625,6 +847,19 @@ class LyricsCloaker:
                         new_tokens.append(rep)
                         replaced = True
                         total_scrambled += 1
+                    elif len(token) >= 4:
+                        # 3. Universal Multilingual Phonotactic Syllabifier (Works across any Latin-script language)
+                        syllabified = universal_syllabify(token)
+                        if syllabified != token:
+                            if token.isupper():
+                                rep = syllabified.upper()
+                            elif token.istitle():
+                                rep = syllabified.capitalize()
+                            else:
+                                rep = syllabified
+                            new_tokens.append(rep)
+                            replaced = True
+                            total_scrambled += 1
 
                 if not replaced:
                     new_tokens.append(token)

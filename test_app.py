@@ -200,6 +200,46 @@ class TestLyricsProcessorAndCloaking(unittest.TestCase):
         self.assertIn("trayn", out)
         self.assertIn("go-in'", out)
 
+    def test_lyrics_multilingual_indonesian(self):
+        song = (
+            "[Verse 1]\n"
+            "Kuasai diriku, tenanglah hatiku\n"
+            "Jangan pernah goyah, berjalanlah bersamaku\n"
+            "[Chorus]\n"
+            "Biar ku menepi, menghapus jejakmu\n"
+        )
+        res = self.processor.sanitize(
+            text=song,
+            cloak_lyrics=True,
+            cloak_mode="scramble",
+            preserve_syllables=True,
+            break_ngrams=False
+        )
+        out = res.sanitized_text
+        self.assertIn("Ku-a-sa-i", out)
+        self.assertIn("di-ri-ku", out)
+        self.assertIn("te-nang-lah", out)
+        self.assertIn("ha-ti-ku", out)
+        self.assertIn("meng-ha-pus", out)
+        self.assertIn("je-jak-mu", out)
+        self.assertLess(res.audit.ngram_overlap_pct, 15.0)
+
+    def test_lyrics_multilingual_spanish(self):
+        song = (
+            "Despacito quiero respirar tu cuello despacito\n"
+            "Deja que te diga cosas al oido\n"
+        )
+        res = self.processor.sanitize(
+            text=song,
+            cloak_lyrics=True,
+            cloak_mode="scramble",
+            preserve_syllables=True,
+            break_ngrams=False
+        )
+        out = res.sanitized_text
+        self.assertIn("Des-pa-ci-to", out)
+        self.assertIn("res-pi-rar", out)
+        self.assertLess(res.audit.ngram_overlap_pct, 15.0)
 
     def test_audit_function(self):
         orig = "one two three four five six seven eight nine ten"

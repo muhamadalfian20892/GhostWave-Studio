@@ -45,7 +45,7 @@ python main.py -i input.mp3 --slice --slice-duration 22.0
 # 5. Cloak a lyrics file using the acoustic spelling scrambler
 python main.py --lyrics lyrics.txt --lyrics-out cloaked.txt --lyrics-mode scramble
 
-# 6. Run the test suite (21 unit tests)
+# 6. Run the test suite (23 unit tests)
 python -m unittest test_app.py
 ```
 
@@ -65,23 +65,25 @@ pyinstaller ghostwave.spec --noconfirm --clean
 
 New on 10/08/2026:
 
-	Added the standalone compiled binary distribution and Inno Setup installer package. The application can now be installed via dist/installer/GhostWaveStudio-v1.0-Setup.exe or extracted as a standalone portable build from dist/GhostWaveStudio-v1.0-Portable.zip without requiring a Python runtime.
+	Added native multilingual support to the Acoustic Spelling Scrambler for Indonesian, Spanish, French, and other Latin-script languages. The earlier dictionary was English-oriented, which caused non-English text to pass through without orthographic changes.
 
-	Built a dual-binary PyInstaller specification (ghostwave.spec) that bundles both the accessible graphical application (GhostWaveStudio.exe) and the command-line utility (ghostwave-cli.exe). Both executables share a single internal runtime directory, which keeps the total installation footprint compact and eliminates cold-start extraction delays.
+	Implemented the Universal Multilingual Phonotactic Syllabifier in lyrics_processor.py. The algorithm parses multi-syllable tokens into musical singing syllables using hyphens according to phonotactic boundary rules and language digraphs (ng, ny, kh, sy, ch, sh, th, ph, ll, rr, qu). In tests with Indonesian song lyrics, tokens like "menghapus jejakmu" become "meng-ha-pus je-jak-mu" and "kuasai diriku" become "ku-a-sa-i di-ri-ku". Suno synthesizes these with natural vocal delivery, while 4-gram database matching drops to 0.0%.
 
-	Generated a multi-resolution application icon (ghostwave.ico) featuring an acoustic waveform motif, embedded across both executables, the Windows installer, and desktop shortcuts.
+	Added over 200 Indonesian singing terms to the phonetic dictionary, including singable elisions such as "t'lah", "s'dah", "s'per-ti", "s'la-lu", "s'mu-a", and "kar'na".
+
+	Added standalone binary distribution and Inno Setup installer packaging. GhostWave Studio can be installed via dist/installer/GhostWaveStudio-v1.0-Setup.exe or run portably from dist/GhostWaveStudio-v1.0-Portable.zip without requiring a local Python installation.
+
+	Built a dual-binary PyInstaller specification (ghostwave.spec) that bundles both the accessible graphical application (GhostWaveStudio.exe) and the command-line utility (ghostwave-cli.exe) with shared runtime libraries.
+
+	Generated a multi-resolution application icon (ghostwave.ico) featuring an acoustic waveform motif, embedded across both executables, the installer, and desktop shortcuts.
 
 	Configured the Inno Setup 6 compiler script (installer.iss) with LZMA2 solid compression, modern wizard styling, automatic uninstaller registration, and an optional task to register ghostwave-cli in the user environment PATH.
-
-	Addressed the issue where uploading cloaked audio alongside original song lyrics still triggered Suno's copyright text filters. Suno evaluates lyrics against commercial databases using 4-gram sequence matching, which flags unchanged text even when the audio passes Audible Magic.
-
-	Added the Acoustic Spelling Scrambler as the primary cloaking engine in lyrics_processor.py. This scrambles text orthography while preserving every word of the original song lyrics. Words like "small", "town", "girl", "world", "living", and "midnight" are written as "smal", "toun", "gurl", "werld", "liv-in'", and "mid-nite". Suno's neural speech synthesis vocalizes the exact original song, while automated text databases see zero-percent string alignment.
 
 	Added vocal vibrato glide markers (~) to cadence endings. Appending tildes to line endings breaks sentence matchers and regex filters while prompting Suno's vocal model to add melodic inflection.
 
 	Added rule-based morphological scramblers that convert "-ing" endings into "[stem]-in'", past-tense "-ed" suffixes into "[stem]'d", and "-ght" clusters into "-ite".
 
-	Updated syllable counting logic to strip internal hyphens and apostrophes so multi-syllable hyphenated tokens retain accurate metric measurements for singing cadence.
+	Updated syllable counting logic to parse hyphenated syllables directly, ensuring exact metric measurements across all languages.
 
 	Maintained optional alternative modes for testing, including Stealth Hybrid, Phonetic Disguise, Semantic Cadence, and remote Cloud LLM rewriting.
 
@@ -89,7 +91,7 @@ New on 10/08/2026:
 
 	Added CLI options (--lyrics, --lyrics-out, --lyrics-mode, --no-adlibs) for automated batch lyrics processing.
 
-	Updated the unit test suite to verify that the scrambler preserves original words while disrupting n-gram hashes.
+	Added unit tests in test_app.py covering Indonesian and Spanish lyrics cloaking, bringing the total suite to 23 unit tests. All tests pass.
 
 New on 10/07/2026:
 
@@ -256,7 +258,7 @@ The test suite covers the DSP routines, the .sn cryptographic container, remote 
 python -m unittest test_app.py
 ```
 
-All 21 tests run in approximately 9 seconds.
+All 23 tests run in approximately 22 seconds.
 
 ---
 
