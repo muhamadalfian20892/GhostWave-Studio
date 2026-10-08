@@ -1,0 +1,66 @@
+name: Build and Release GhostWave Studio
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Windows Standalone Binaries and Installer
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller pillow
+
+      - name: Verify Unit Tests
+        run: |
+          python -m unittest test_app.py
+
+      - name: Build Standalone Binaries with PyInstaller
+        run: |
+          pyinstaller ghostwave.spec --noconfirm --clean
+
+      - name: Install Inno Setup
+        run: |
+          choco install innosetup --no-progress
+
+      - name: Build Inno Setup Installer
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+
+      - name: Create Portable Zip Package
+        run: |
+          Copy-Item "README.md", "CONTRIBUTING.md", "LICENSE" -Destination "dist\GhostWaveStudio\"
+          Compress-Archive -Path "dist\GhostWaveStudio\*" -DestinationPath "dist\installer\GhostWaveStudio-v1.0-Portable.zip" -Force
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          name: GhostWave Studio ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            dist/installer/GhostWaveStudio-v1.0-Setup.exe
+            dist/installer/GhostWaveStudio-v1.0-Portable.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
