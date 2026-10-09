@@ -55,7 +55,7 @@ class GhostWaveConfig:
     """
     # Metadata
     app_name: str = "GhostWave Studio"
-    app_version: str = "1.2.0"
+    app_version: str = "1.3.0"
     check_updates_on_startup: bool = True
 
     # Cloud Stem API Credentials (Encrypted)
@@ -152,11 +152,19 @@ class GhostWaveConfig:
     def save(self, file_path: Optional[str] = None) -> str:
         """
         Encrypts and writes the configuration to a .sn file.
+        Creates a .bak backup copy of the prior valid vault before replacing it.
         Returns the absolute path to the written file.
         """
         target_path = resolve_config_path(file_path, for_writing=True)
         os.makedirs(os.path.dirname(target_path), exist_ok=True)
         raw_bytes = self.to_encrypted_bytes()
+
+        # If previous target exists, preserve a backup
+        if os.path.exists(target_path):
+            try:
+                shutil.copy2(target_path, f"{target_path}.bak")
+            except Exception:
+                pass
 
         temp_target = f"{target_path}.tmp"
         with open(temp_target, "wb") as f:
@@ -171,6 +179,7 @@ class GhostWaveConfig:
     def load(cls, file_path: Optional[str] = None) -> "GhostWaveConfig":
         """
         Locates and decrypts the .sn file.
+        Recovers from .bak backup file if primary file reading encounters corruption.
         If no .sn file is found, checks for legacy JSON configurations and migrates them automatically.
         """
         target_path = resolve_config_path(file_path, for_writing=False)
@@ -180,7 +189,15 @@ class GhostWaveConfig:
                     raw_bytes = f.read()
                 return cls.from_encrypted_bytes(raw_bytes)
             except Exception:
-                # If reading encrypted file fails, fallback to fresh defaults
+                # If primary vault is corrupted, attempt backup recovery
+                bak_path = f"{target_path}.bak"
+                if os.path.exists(bak_path):
+                    try:
+                        with open(bak_path, "rb") as bf:
+                            bak_bytes = bf.read()
+                        return cls.from_encrypted_bytes(bak_bytes)
+                    except Exception:
+                        pass
                 pass
 
         # Try automatic migration from legacy unencrypted configs

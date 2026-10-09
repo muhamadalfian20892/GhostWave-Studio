@@ -613,6 +613,89 @@ class TestVersion120UpgradesAndPersonas(unittest.TestCase):
         self.assertEqual(info.duration_seconds, 0.0)
         self.assertEqual(info.duration_formatted, "00:00")
 
+    def test_dc_offset_removal(self):
+        """Verifies load_audio_samples removes DC offset from audio signals."""
+        from audio_processor import load_audio_samples
+        test_wav = os.path.join(self.test_dir, "dc_test.wav")
+        sr = 44100
+        t = np.linspace(0, 1.0, sr, endpoint=False, dtype=np.float32)
+        signal_with_dc = np.sin(2.0 * np.pi * 440.0 * t).astype(np.float32) * 0.3 + 0.5
+        sf.write(test_wav, signal_with_dc, sr)
+
+        loaded, loaded_sr = load_audio_samples(test_wav, target_sr=sr)
+        self.assertEqual(loaded_sr, sr)
+        mean_offset = float(np.mean(loaded))
+        self.assertAlmostEqual(mean_offset, 0.0, places=4)
+
+    def test_zero_jitter_and_dispersion_guards(self):
+        """Verifies zero jitter and empty dispersion center freqs return untouched buffers."""
+        from audio_processor import apply_micro_chrono_jitter, apply_schroeder_phase_dispersion
+        sr = 44100
+        data = np.ones((1000, 2), dtype=np.float32) * 0.5
+        out_jitter = apply_micro_chrono_jitter(data, sr=sr, max_jitter_ms=0.0)
+        np.testing.assert_array_equal(out_jitter, data)
+
+        out_disp = apply_schroeder_phase_dispersion(data, sr=sr, center_freqs=())
+        np.testing.assert_array_equal(out_disp, data)
+
+    def test_syllabify_lines_batch(self):
+        """Verifies batch syllabification preserves tags and splits lyrics words."""
+        from lyrics_processor import syllabify_lines
+        input_lyrics = "[Verse 1]\nMalam sunyi bintang bersinar"
+        result = syllabify_lines(input_lyrics)
+        lines = result.splitlines()
+        self.assertEqual(lines[0], "[Verse 1]")
+        self.assertIn("Ma-lam", lines[1])
+        self.assertIn("su-nyi", lines[1])
+        self.assertIn("bin-tang", lines[1])
+
+    def test_changelog_has_no_download_urls(self):
+        """Verifies changelog.txt contains strictly zero download URLs."""
+        changelog_path = os.path.join(os.path.dirname(__file__), "changelog.txt")
+        self.assertTrue(os.path.exists(changelog_path))
+        with open(changelog_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        self.assertNotIn("http://", content)
+        self.assertNotIn("https://", content)
+        self.assertNotIn("Installer:", content)
+        self.assertNotIn("Portable:", content)
+
+    def test_readme_txt_pure_plain_text(self):
+        """Verifies README.txt contains zero markdown syntax, backticks, em dashes, or emojis."""
+        readme_path = os.path.join(os.path.dirname(__file__), "README.txt")
+        self.assertTrue(os.path.exists(readme_path))
+        with open(readme_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        self.assertGreater(len(content), 100)
+        self.assertNotIn("```", content)
+        self.assertNotIn("`", content)
+        self.assertNotIn("##", content)
+        self.assertNotIn("**", content)
+        self.assertNotIn("—", content)
+        non_ascii = [ch for ch in content if ord(ch) > 127]
+        self.assertEqual(len(non_ascii), 0, f"Found non-ASCII characters: {set(non_ascii)}")
+
+    def test_accessibility_guide_and_about_dialogs_structure(self):
+        """Verifies AccessibilityGuideDialog and AboutDialog are structured with read-only text and close buttons."""
+        import wx
+        from gui import AccessibilityGuideDialog, AboutDialog
+        app = wx.App.Get()
+        if not app:
+            app = wx.App(False)
+
+        dlg = AccessibilityGuideDialog()
+        self.assertIn("GhostWave Studio", dlg.text_ctrl.GetValue())
+        self.assertTrue(dlg.text_ctrl.IsEditable() is False)
+        self.assertIsNotNone(dlg.close_btn)
+        self.assertIsNotNone(dlg.copy_btn)
+        dlg.Destroy()
+
+        about_dlg = AboutDialog()
+        self.assertIn("GhostWave Studio", about_dlg.text_ctrl.GetValue())
+        self.assertTrue(about_dlg.text_ctrl.IsEditable() is False)
+        self.assertIsNotNone(about_dlg.close_btn)
+        about_dlg.Destroy()
+
 
 if __name__ == "__main__":
     unittest.main()

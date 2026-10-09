@@ -744,6 +744,244 @@ class AbsAudioSlicerDialog(wx.Dialog):
         threading.Thread(target=worker, daemon=True).start()
 
 
+class AudioFileDropTarget(wx.FileDropTarget):
+    """
+    Drag and drop target allowing users to drag audio files directly
+    from File Explorer into the Audio Sanitizer tab.
+    """
+
+    def __init__(self, panel: AudioSanitizerPanel):
+        super().__init__()
+        self.panel = panel
+
+    def OnDropFiles(self, x: int, y: int, filenames: list[str]) -> bool:
+        if not filenames:
+            return False
+        first_file = filenames[0]
+        valid_exts = {".wav", ".mp3", ".flac", ".m4a", ".ogg", ".aac"}
+        ext = os.path.splitext(first_file)[1].lower()
+        if ext in valid_exts:
+            self.panel.load_file(first_file)
+            return True
+        else:
+            wx.Bell()
+            wx.MessageBox(
+                f"Unsupported file format: {ext}\nPlease drop a WAV, MP3, FLAC, M4A, OGG, or AAC file.",
+                "Unsupported Audio Format",
+                wx.OK | wx.ICON_WARNING,
+                self.panel
+            )
+            return False
+
+
+class AccessibilityGuideDialog(wx.Dialog):
+    """
+    Accessible dialog displaying screen reader navigation guidelines,
+    shortcut keys, and software accessibility architecture.
+    Features a read-only scrollable text area, clipboard copy, and escape key dismissal.
+    """
+
+    def __init__(self, parent: Optional[wx.Window] = None):
+        super().__init__(
+            parent,
+            title=f"Screen Reader Accessibility Guide - GhostWave Studio v{APP_VERSION}",
+            style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
+            size=(640, 560)
+        )
+        self.SetName("Screen Reader Accessibility Guide Dialog")
+
+        panel = wx.Panel(self, style=wx.TAB_TRAVERSAL)
+        panel.SetName("Accessibility Guide Panel")
+
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        header_label = wx.StaticText(
+            panel,
+            label="GhostWave Studio Keyboard Navigation and Screen Reader Shortcuts:"
+        )
+        header_label.SetName("Accessibility Guide Header Label")
+        main_sizer.Add(header_label, 0, wx.ALL, 10)
+
+        guide_content = (
+            f"GhostWave Studio v{APP_VERSION}\n"
+            "Screen Reader Accessibility and Keyboard Navigation Manual\n\n"
+            "Overview:\n"
+            "GhostWave Studio is designed with an accessibility-first architecture.\n"
+            "All controls provide explicit MSAA and UI Automation accessible names.\n"
+            "Focus order strictly follows visual layout and logical workflow.\n\n"
+            "General Navigation:\n"
+            "  Tab: Move focus forward to the next interactive control.\n"
+            "  Shift+Tab: Move focus backward to the previous interactive control.\n"
+            "  Ctrl+Tab: Switch forward between Audio Sanitizer and Lyrics Sanitizer tabs.\n"
+            "  Ctrl+Shift+Tab: Switch backward between tabs.\n"
+            "  Escape: Dismiss active modal dialogs and popup sheets.\n"
+            "  F1: Open this accessibility guide.\n"
+            "  Ctrl+H or Shift+F1: Open the Suno Stealth Protocol cheat sheet.\n\n"
+            "Audio Sanitizer Tab (Alt+1 or Ctrl+Tab):\n"
+            "  Alt+B: Browse for input audio file.\n"
+            "  Alt+P: Process and export sanitized audio.\n"
+            "  Alt+E: Run quantitative Chromaprint fingerprint audit.\n"
+            "  Alt+S: Toggle advanced settings panel or open ABS Audio Slicer.\n"
+            "  Alt+A: Open Cloud API settings dialog.\n"
+            "  Ctrl+U: Launch ABS Audio Slicer from any tab.\n"
+            "  Ctrl+Shift+S: Export encrypted configuration vault (.sn).\n"
+            "  Ctrl+Shift+O: Import encrypted configuration vault (.sn).\n\n"
+            "Lyrics Sanitizer Tab (Alt+2 or Ctrl+Tab):\n"
+            "  Alt+S: Sanitize and cloak lyrics.\n"
+            "  Alt+C: Copy cloaked lyrics output to system clipboard.\n"
+            "  Alt+L: Clear lyrics input and output fields.\n"
+            "  Alt+M: Load sample copyright test lyrics.\n"
+            "  Ctrl+B: Open celebrity and artist blacklist editor.\n"
+            "  Ctrl+L: Open Cloud LLM settings dialog.\n\n"
+            "Screen Reader Compatibility:\n"
+            "Tested with NVDA 2023+, JAWS 2023+, and Windows Narrator.\n"
+            "All status updates are announced via status bar text and system audio cues."
+        )
+
+        self.text_ctrl = wx.TextCtrl(
+            panel,
+            value=guide_content,
+            style=wx.TE_MULTILINE | wx.TE_READONLY,
+            name="Accessibility Guide Read-Only Text Area"
+        )
+        self.text_ctrl.SetToolTip("Read-only accessibility and shortcut instructions.")
+        main_sizer.Add(self.text_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
+        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
+
+        self.copy_btn = wx.Button(
+            panel,
+            label="&Copy Guide to Clipboard",
+            name="Copy Guide to Clipboard Button"
+        )
+        self.copy_btn.SetToolTip("Copy the full accessibility guide text to clipboard.")
+        self.copy_btn.Bind(wx.EVT_BUTTON, self.on_copy)
+        btn_sizer.Add(self.copy_btn, 0, wx.RIGHT, 10)
+
+        btn_sizer.AddStretchSpacer()
+
+        self.close_btn = wx.Button(
+            panel,
+            wx.ID_CANCEL,
+            label="&Close Guide",
+            name="Close Accessibility Guide Button"
+        )
+        self.close_btn.SetToolTip("Close this accessibility guide dialog (Hotkey: Escape).")
+        self.close_btn.SetDefault()
+        btn_sizer.Add(self.close_btn, 0)
+
+        main_sizer.Add(btn_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        panel.SetSizer(main_sizer)
+
+        dialog_sizer = wx.BoxSizer(wx.VERTICAL)
+        dialog_sizer.Add(panel, 1, wx.EXPAND)
+        self.SetSizer(dialog_sizer)
+        self.CentreOnParent()
+
+        self.Bind(wx.EVT_CHAR_HOOK, self.on_key_hook)
+
+    def on_copy(self, event: wx.CommandEvent):
+        if wx.TheClipboard.Open():
+            wx.TheClipboard.SetData(wx.TextDataObject(self.text_ctrl.GetValue()))
+            wx.TheClipboard.Close()
+            wx.Bell()
+
+    def on_key_hook(self, event: wx.KeyEvent):
+        if event.GetKeyCode() == wx.WXK_ESCAPE:
+            self.EndModal(wx.ID_CANCEL)
+        else:
+            event.Skip()
+
+
+class AboutDialog(wx.Dialog):
+    """
+    Accessible About dialog with scrollable read-only information,
+    architecture summary, and close button.
+    """
+
+    def __init__(self, parent: Optional[wx.Window] = None):
+        super().__init__(
+            parent,
+            title=f"About GhostWave Studio v{APP_VERSION}",
+            style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
+            size=(620, 520)
+        )
+        self.SetName("About GhostWave Studio Dialog")
+
+        panel = wx.Panel(self, style=wx.TAB_TRAVERSAL)
+        panel.SetName("About GhostWave Studio Panel")
+
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        header_label = wx.StaticText(
+            panel,
+            label=f"GhostWave Studio v{APP_VERSION} Software Information:"
+        )
+        header_label.SetName("About Header Label")
+        main_sizer.Add(header_label, 0, wx.ALL, 10)
+
+        about_text = (
+            f"GhostWave Studio v{APP_VERSION}\n\n"
+            "Acoustic Stealth and Audio Cloaking Engine for Music Generation Platforms.\n"
+            "Transforms source audio and lyrics into acoustic structures that bypass\n"
+            "automated acoustic fingerprinting (Audible Magic, VIBE) and speech transcription filters.\n\n"
+            "Encrypted Profile Vault (.sn):\n"
+            "  Hardware-keyed AES-256 binary container protecting API keys, presets, and paths.\n"
+            "  Zero plaintext credential exposure on disk.\n"
+            "  Automatic backup rotation with .bak failover recovery.\n\n"
+            "Multi-Vector Evasion Architecture:\n"
+            "  Dynamic Micro-Chrono Jitter: Non-linear temporal warp disrupting landmark histograms.\n"
+            "  Hilbert Bode Frequency Shifter: Asymmetric single-sideband frequency translation.\n"
+            "  Adversarial Pseudo-Peak Injection: High-energy decoy spectral coordinates.\n"
+            "  Schroeder All-Pass Dispersion: Multi-stage phase scrambler preserving flat frequency response.\n"
+            "  Virtual Acoustic Re-Amping: Early reflections and room boundary diffusion.\n"
+            "  Anti-Whisper Scrambler: Center vocal notch and formant ring modulation.\n"
+            "  Front-End Preamble Camouflage: Analog noise preamble resetting fingerprint alignment.\n"
+            "  Cloud API Stem Isolation: Remote stem separation with zero local model weights.\n"
+            "  Chromaprint Audit: Quantitative evasion verification.\n\n"
+            "Accessibility:\n"
+            "  MSAA and UI Automation compliant controls, keyboard navigation, and screen reader feedback."
+        )
+
+        self.text_ctrl = wx.TextCtrl(
+            panel,
+            value=about_text,
+            style=wx.TE_MULTILINE | wx.TE_READONLY,
+            name="About Software Read-Only Text Area"
+        )
+        self.text_ctrl.SetToolTip("Software specifications and architecture overview.")
+        main_sizer.Add(self.text_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
+        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        btn_sizer.AddStretchSpacer()
+
+        self.close_btn = wx.Button(
+            panel,
+            wx.ID_CANCEL,
+            label="&Close About",
+            name="Close About Dialog Button"
+        )
+        self.close_btn.SetToolTip("Close this dialog (Hotkey: Escape).")
+        self.close_btn.SetDefault()
+        btn_sizer.Add(self.close_btn, 0)
+
+        main_sizer.Add(btn_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        panel.SetSizer(main_sizer)
+
+        dialog_sizer = wx.BoxSizer(wx.VERTICAL)
+        dialog_sizer.Add(panel, 1, wx.EXPAND)
+        self.SetSizer(dialog_sizer)
+        self.CentreOnParent()
+
+        self.Bind(wx.EVT_CHAR_HOOK, self.on_key_hook)
+
+    def on_key_hook(self, event: wx.KeyEvent):
+        if event.GetKeyCode() == wx.WXK_ESCAPE:
+            self.EndModal(wx.ID_CANCEL)
+        else:
+            event.Skip()
+
+
 class AudioSanitizerPanel(wx.Panel):
     """
     Accessible Tab for configuring and processing audio files for Suno AI
@@ -761,6 +999,7 @@ class AudioSanitizerPanel(wx.Panel):
         self.cancel_event: Optional[threading.Event] = None
 
         self._build_ui()
+        self.SetDropTarget(AudioFileDropTarget(self))
 
     def _build_ui(self):
         main_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -1279,6 +1518,9 @@ class AudioSanitizerPanel(wx.Panel):
             self.file_info_text.SetLabel(f"Audio Specifications: {info.summary_text}")
             self.log_ctrl.AppendText(f"Loaded source file: {os.path.basename(file_path)}\n{info.summary_text}\n\n")
             self.set_status(f"Loaded file: {os.path.basename(file_path)} ({info.duration_formatted})")
+            top = self.GetTopLevelParent()
+            if top and hasattr(top, "SetTitle"):
+                top.SetTitle(f"GhostWave Studio v{APP_VERSION} - [{os.path.basename(file_path)}]")
         except Exception as ex:
             self.file_info_text.SetLabel(f"Audio Specifications: Error reading file ({str(ex)})")
             self.set_status("Error loading audio file.")
@@ -1463,9 +1705,19 @@ class LyricsSanitizerPanel(wx.Panel):
         main_sizer = wx.BoxSizer(wx.VERTICAL)
 
         # Section 1: Original Lyrics Input
+        in_header_sizer = wx.BoxSizer(wx.HORIZONTAL)
         in_label = wx.StaticText(self, label="1. Original Lyrics Input:")
         in_label.SetName("Original Lyrics Input Label")
-        main_sizer.Add(in_label, 0, wx.LEFT | wx.RIGHT | wx.TOP, 10)
+        in_header_sizer.Add(in_label, 0, wx.ALIGN_CENTER_VERTICAL)
+        in_header_sizer.AddStretchSpacer()
+
+        self.input_stats_label = wx.StaticText(
+            self,
+            label="Characters: 0 | Words: 0 | Lines: 0",
+            name="Input Lyrics Statistics"
+        )
+        in_header_sizer.Add(self.input_stats_label, 0, wx.ALIGN_CENTER_VERTICAL)
+        main_sizer.Add(in_header_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 10)
 
         self.input_text_ctrl = wx.TextCtrl(
             self,
@@ -1474,6 +1726,7 @@ class LyricsSanitizerPanel(wx.Panel):
             name="Original Lyrics Input"
         )
         self.input_text_ctrl.SetToolTip("Type or paste your original lyrics here.")
+        self.input_text_ctrl.Bind(wx.EVT_TEXT, self.on_input_text_changed)
         main_sizer.Add(self.input_text_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         # Section 2: Moderation Filters & Structural Standards
@@ -1718,10 +1971,19 @@ class LyricsSanitizerPanel(wx.Panel):
         self.set_status("Loaded sample copyright lyrics into input.")
         self.sanitize_btn.SetFocus()
 
+    def on_input_text_changed(self, event: wx.CommandEvent):
+        val = self.input_text_ctrl.GetValue()
+        chars = len(val)
+        words = len(val.split())
+        lines = len([line for line in val.splitlines() if line.strip()])
+        self.input_stats_label.SetLabel(f"Characters: {chars} | Words: {words} | Lines: {lines}")
+        event.Skip()
+
     def on_clear(self, event: wx.CommandEvent):
         self.input_text_ctrl.Clear()
         self.output_text_ctrl.Clear()
         self.changes_ctrl.Clear()
+        self.input_stats_label.SetLabel("Characters: 0 | Words: 0 | Lines: 0")
         self.set_status("Cleared lyrics fields.")
         self.input_text_ctrl.SetFocus()
 
@@ -2063,53 +2325,14 @@ class GhostWaveFrame(wx.Frame):
         check_updates_background(self, silent=False, current_version=APP_VERSION, on_finish=_finish)
 
     def on_accessibility_guide(self, event: wx.CommandEvent):
-        guide = (
-            f"GhostWave Studio v{APP_VERSION} - Screen Reader Accessibility Guide\n\n"
-            "Key Navigation Shortcuts:\n"
-            "• Tab / Shift+Tab: Move forward / backward between controls.\n"
-            "• Ctrl+Tab / Ctrl+Shift+Tab: Switch between Audio and Lyrics tabs.\n"
-            "• Alt+B: Browse for audio file (in Audio tab).\n"
-            "• Alt+P: Process and export audio.\n"
-            "• Alt+E: Run quantitative Evasion Safety Audit.\n"
-            "• Alt+S: Open ABS Audio Slicer dialog (in Audio tab).\n"
-            "• Alt+A: Open Cloud API Settings dialog.\n"
-            "• Ctrl+U: Open ABS Audio Slicer from anywhere.\n"
-            "• Ctrl+H / Shift+F1: Open Stealth Protocol & Suno Cheat Sheet.\n"
-            "• Ctrl+Shift+S: Export encrypted configuration vault (.sn).\n"
-            "• Ctrl+Shift+O: Import encrypted configuration vault (.sn).\n"
-            "• Alt+S (in Lyrics tab): Sanitize lyrics.\n"
-            "• Alt+C: Copy sanitized lyrics to clipboard.\n"
-            "• Alt+L: Clear lyrics fields.\n"
-            "• Alt+M: Load sample lyrics.\n"
-            "• Ctrl+B: Open Celebrity Blacklist Editor dialog.\n"
-            "• F1: View this guide.\n\n"
-            "All controls are paired with explicit accessible names and descriptions for NVDA, JAWS, and Windows Narrator."
-        )
-        wx.MessageBox(guide, "Accessibility Guide", wx.OK | wx.ICON_INFORMATION, self)
+        dlg = AccessibilityGuideDialog(self)
+        dlg.ShowModal()
+        dlg.Destroy()
 
     def on_about(self, event: wx.CommandEvent):
-        about_text = (
-            f"GhostWave Studio v{APP_VERSION}\n\n"
-            "Next-Generation Acoustic Stealth & Audio Cloaking Engine.\n"
-            "Transforms audio into untraceable acoustic ghosts that defeat automated "
-            "content recognition (Audible Magic & VIBE) and speech transcription filters.\n\n"
-            "Encrypted Profile Vault (.sn):\n"
-            "• Military-grade encrypted persistence: All API keys, tokens, and preferences\n"
-            "  are safely sealed in an encrypted binary container (.sn).\n"
-            "• Zero leakage: Only GhostWave Studio can decrypt and read your profile.\n\n"
-            "Multi-Vector Evasion Architecture:\n"
-            "• Dynamic Micro-Chrono Jitter: Non-linear time drift defeating landmark offset histograms.\n"
-            "• Hilbert Bode Frequency Shifter: +8.5 Hz non-harmonic shift breaking CQT chroma vectors.\n"
-            "• Adversarial Pseudo-Peak Injection: Hijacks STFT landmark coordinates.\n"
-            "• Schroeder All-Pass Phase Dispersion: Scrambles phase with 100% flat frequency magnitude.\n"
-            "• Virtual Acoustic Re-Amping: Studio room simulation and reflection diffusion.\n"
-            "• Anti-Whisper Lyric Scrambler: Vocal cancellation and swept formant ring modulation.\n"
-            "• Front-End Preamble Camouflage: 3.5s organic analog intro crossfaded to disrupt time index 0.\n"
-            "• Cloud API Stem Isolation: Remote stem separation with ZERO local model downloads.\n"
-            "• Chromaprint Evasion Benchmark: Quantitative acoustic verification.\n"
-            "• Strict Screen Reader Accessibility (MSAA/UIA compliant)."
-        )
-        wx.MessageBox(about_text, f"About GhostWave Studio v{APP_VERSION}", wx.OK | wx.ICON_INFORMATION, self)
+        dlg = AboutDialog(self)
+        dlg.ShowModal()
+        dlg.Destroy()
 
 
 # Backward-compatible alias

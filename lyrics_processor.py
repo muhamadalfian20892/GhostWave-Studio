@@ -551,6 +551,32 @@ def universal_syllabify(w: str) -> str:
     return out if "-" in out else w
 
 
+def syllabify_lines(text: str) -> str:
+    """
+    Batch-syllabifies words across multiline lyrics text while preserving
+    structural bracketed tags, punctuation, and line breaks.
+    """
+    lines = text.splitlines()
+    processed_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or (stripped.startswith("[") and stripped.endswith("]")):
+            processed_lines.append(line)
+            continue
+        words = line.split(" ")
+        new_words = []
+        for word in words:
+            match = re.match(r"^([^\w]*)([\w'-]+)([^\w]*)$", word, re.UNICODE)
+            if match:
+                prefix, core, suffix = match.groups()
+                syll = universal_syllabify(core)
+                new_words.append(f"{prefix}{syll}{suffix}")
+            else:
+                new_words.append(word)
+        processed_lines.append(" ".join(new_words))
+    return "\n".join(processed_lines)
+
+
 @functools.lru_cache(maxsize=8192)
 def count_syllables(word: str) -> int:
     """Estimates syllable count for words across all languages, stripping punctuation and hyphens."""

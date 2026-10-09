@@ -48,7 +48,7 @@ jobs:
 
       - name: Create Portable Zip Package
         run: |
-          Copy-Item "README.md", "CONTRIBUTING.md", "LICENSE", "changelog.txt" -Destination "dist\GhostWaveStudio\"
+          Copy-Item "README.txt", "LICENSE", "changelog.txt" -Destination "dist\GhostWaveStudio\"
           Compress-Archive -Path "dist\GhostWaveStudio\*" -DestinationPath "dist\installer\GhostWaveStudio-${{ github.ref_name }}-Portable.zip" -Force
 
       - name: Publish GitHub Release

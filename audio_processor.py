@@ -242,6 +242,11 @@ def load_audio_samples(file_path: str, target_sr: int = 44100) -> Tuple[np.ndarr
     if not np.isfinite(data).all():
         data = np.nan_to_num(data, nan=0.0, posinf=1.0, neginf=-1.0)
 
+    # Remove DC offset to center waveform around zero
+    if data.size > 0:
+        dc_offset = np.mean(data, axis=0, keepdims=True)
+        data = data - dc_offset
+
     return data, sr
 
 
@@ -331,7 +336,7 @@ def apply_micro_chrono_jitter(
     Vectorized in float32 with minimal buffer reallocation.
     """
     n_samples = len(data)
-    if n_samples <= sr:
+    if n_samples <= sr or max_jitter_ms <= 0.0:
         return data
 
     t = np.linspace(0, float(n_samples) / float(sr), n_samples, endpoint=False, dtype=np.float32)
@@ -685,6 +690,9 @@ def apply_schroeder_phase_dispersion(
     completely randomizing phase and dispersing transient impulse peaks across time.
     Uses pre-cached bilinear biquad filter coefficients.
     """
+    if len(data) == 0 or not center_freqs:
+        return data
+
     out = np.ascontiguousarray(data, dtype=np.float32)
     for f0 in center_freqs:
         if f0 >= sr / 2.0:

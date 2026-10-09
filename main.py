@@ -26,7 +26,8 @@ def print_banner():
 
 def run_cli(args: argparse.Namespace) -> int:
     """Executes audio sanitization and prints the acoustic evasion audit from CLI."""
-    print_banner()
+    if not getattr(args, "no_banner", False):
+        print_banner()
 
     # Load configuration from encrypted .sn vault
     vault = GhostWaveConfig.load(args.config_sn) if hasattr(args, "config_sn") and args.config_sn else GhostWaveConfig.load()
@@ -217,6 +218,7 @@ def main():
     parser.add_argument("--no-adlibs", action="store_true", help="Disable rhythmic ad-libs in lyrics cloaking")
     parser.add_argument("--check-update", action="store_true", help="Check GitHub for application updates")
     parser.add_argument("--gui", action="store_true", help="Explicitly launch graphical desktop user interface")
+    parser.add_argument("--no-banner", action="store_true", help="Suppress startup banner output in CLI mode")
 
     args = parser.parse_args()
 

@@ -1,9 +1,29 @@
 GhostWave Studio - Changelog & Release Notes
 
+Version: 1.3.0
+Release Date: 2026-10-09
+
+What is new:
+New on 10/09/2026 (v1.3.0):
+	Replaced the basic modal message box in the F1 accessibility guide with a fully accessible dialog containing a scrollable read-only text control, explicit screen reader names, a copy-all button, and a close button.
+	Replaced the modal message box in the About dialog with an accessible scrollable read-only dialog and close button.
+	Removed download links from the changelog file to keep the document clean for end users, while updating the update engine to synthesize official release coordinates automatically.
+	Added a dedicated plain text non-technical guide (README.txt) designed specifically for installers and everyday users without programming experience.
+	Removed contributor markdown documentation and compiler references from the installer distribution package.
+	Accelerated acoustic room simulation by switching impulse response convolution to fast Fourier transform convolution for filters longer than 512 samples.
+	Added automatic DC-offset filtering during audio loading to remove asymmetric recording drift prior to peak normalization.
+	Added soft-limit saturation metrics and clipping reports to track when extreme acoustic phase shifts require limiting.
+	Added real-time syllable and character counting feedback in the lyrics moderation interface.
+	Added drag-and-drop audio file loading support on the main application window.
+	Added automatic backup rotation (.bak) for encrypted profile vaults to protect user configurations against unexpected write interruptions.
+	Added title bar updates reflecting the currently loaded audio file name.
+	Added safety confirmation dialog before clearing populated lyrics.
+	Added Select All (Ctrl+A) keyboard accelerators across multiline text controls.
+	Added early exit guards for zero jitter intensity and zero-stage phase dispersion filters.
+	Added silent execution flag (--no-banner) for automated scripting in the command-line interface.
+
 Version: 1.2.0
 Release Date: 2026-10-09
-Installer: https://github.com/muhamadalfian20892/GhostWave-Studio/releases/download/v1.2.0/GhostWaveStudio-v1.2.0-Setup.exe
-Portable: https://github.com/muhamadalfian20892/GhostWave-Studio/releases/download/v1.2.0/GhostWaveStudio-v1.2.0-Portable.zip
 
 What is new:
 New on 10/09/2026:
@@ -25,8 +45,6 @@ New on 10/09/2026:
 
 Version: 1.0.0
 Release Date: 2026-10-09
-Installer: https://github.com/muhamadalfian20892/GhostWave-Studio/releases/download/v1.0.0/GhostWaveStudio-v1.0.0-Setup.exe
-Portable: https://github.com/muhamadalfian20892/GhostWave-Studio/releases/download/v1.0.0/GhostWaveStudio-v1.0.0-Portable.zip
 
 What is new:
 	Integrated in-app update checker connecting directly to GitHub releases without intermediary servers.
