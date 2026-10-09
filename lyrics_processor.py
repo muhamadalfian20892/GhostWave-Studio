@@ -10,6 +10,7 @@ while Suno AI text-to-singing synthesis models sing the original lyrics flawless
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import re
@@ -492,6 +493,7 @@ def is_vocalic(ch: str, next_ch: Optional[str] = None) -> bool:
     return False
 
 
+@functools.lru_cache(maxsize=8192)
 def universal_syllabify(w: str) -> str:
     """
     Universal Multilingual Phonotactic Syllabifier.
@@ -549,6 +551,7 @@ def universal_syllabify(w: str) -> str:
     return out if "-" in out else w
 
 
+@functools.lru_cache(maxsize=8192)
 def count_syllables(word: str) -> int:
     """Estimates syllable count for words across all languages, stripping punctuation and hyphens."""
     w = word.lower().strip(".,!?;:'\"()[]{}~")
@@ -1024,57 +1027,50 @@ class LyricsProcessor:
         return text, changes
 
     def filter_celebrities(self, text: str, replacement_token: str = "[Artist]") -> Tuple[str, list[str]]:
-        """Strips known artist and celebrity names using word boundary regex."""
+        """Strips known artist and celebrity names using single-pass combined regex."""
+        if not self.celebrity_blacklist:
+            return text, []
+
         changes: list[str] = []
         lines = text.split("\n")
         new_lines: list[str] = []
 
         sorted_names = sorted(self.celebrity_blacklist, key=len, reverse=True)
+        celeb_regex = re.compile(rf"\b(?:{'|'.join(re.escape(n) for n in sorted_names)})\b", flags=re.IGNORECASE)
 
         for line_idx, line in enumerate(lines, start=1):
-            line_result = line
-            for name in sorted_names:
-                escaped = re.escape(name)
-                pattern = rf"\b{escaped}\b"
-                matches = list(re.finditer(pattern, line_result, flags=re.IGNORECASE))
-                if matches:
-                    for match in reversed(matches):
-                        matched_str = match.group(0)
-                        start, end = match.span()
-                        line_result = line_result[:start] + replacement_token + line_result[end:]
-                        changes.append(
-                            f"Line {line_idx}: Replaced celebrity name '{matched_str}' with '{replacement_token}'"
-                        )
-            new_lines.append(line_result)
+            def _sub(match):
+                matched_str = match.group(0)
+                changes.append(
+                    f"Line {line_idx}: Replaced celebrity name '{matched_str}' with '{replacement_token}'"
+                )
+                return replacement_token
+
+            new_lines.append(celeb_regex.sub(_sub, line))
 
         return "\n".join(new_lines), changes
 
     def filter_profanities(self, text: str) -> Tuple[str, list[str]]:
-        """Replaces severe profanities and slurs with musical, safe homophones."""
+        """Replaces severe profanities and slurs with musical, safe homophones in a single pass."""
         changes: list[str] = []
         lines = text.split("\n")
         new_lines: list[str] = []
 
         sorted_profanities = sorted(PROFANITY_HOMOPHONES.keys(), key=len, reverse=True)
+        profanity_regex = re.compile(rf"\b(?:{'|'.join(re.escape(bad) for bad in sorted_profanities)})\b", flags=re.IGNORECASE)
 
         for line_idx, line in enumerate(lines, start=1):
-            line_result = line
-            for bad_word in sorted_profanities:
-                replacement = PROFANITY_HOMOPHONES[bad_word]
-                escaped = re.escape(bad_word)
-                pattern = rf"\b{escaped}\b"
+            def _sub(match):
+                matched_str = match.group(0)
+                low = matched_str.lower()
+                replacement = PROFANITY_HOMOPHONES.get(low, "friend")
+                rep = self.match_case(matched_str, replacement)
+                changes.append(
+                    f"Line {line_idx}: Replaced explicit term '{matched_str}' with safe alternative '{rep}'"
+                )
+                return rep
 
-                matches = list(re.finditer(pattern, line_result, flags=re.IGNORECASE))
-                if matches:
-                    for match in reversed(matches):
-                        matched_str = match.group(0)
-                        rep = self.match_case(matched_str, replacement)
-                        start, end = match.span()
-                        line_result = line_result[:start] + rep + line_result[end:]
-                        changes.append(
-                            f"Line {line_idx}: Replaced explicit term '{matched_str}' with safe alternative '{rep}'"
-                        )
-            new_lines.append(line_result)
+            new_lines.append(profanity_regex.sub(_sub, line))
 
         return "\n".join(new_lines), changes
 

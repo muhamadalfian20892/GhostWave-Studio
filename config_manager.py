@@ -55,7 +55,7 @@ class GhostWaveConfig:
     """
     # Metadata
     app_name: str = "GhostWave Studio"
-    app_version: str = "1.0.0"
+    app_version: str = "1.2.0"
     check_updates_on_startup: bool = True
 
     # Cloud Stem API Credentials (Encrypted)
@@ -85,7 +85,7 @@ class GhostWaveConfig:
     inject_preamble: bool = True
     apply_eq_filters: bool = True
     apply_dither: bool = True
-    trim_duration: bool = True
+    trim_duration: bool = False
     strip_metadata: bool = True
 
     # Lyrics Moderation, Cloaking & Custom Blacklist

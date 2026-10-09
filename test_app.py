@@ -444,6 +444,176 @@ class TestGhostWaveUpdater(unittest.TestCase):
             dlg.Destroy()
 
 
+class TestVersion120UpgradesAndPersonas(unittest.TestCase):
+    """
+    Validates v1.2.0 features, optimizations, and behaviors across
+    standard user, developer, and constrained hardware ('lagger') personas.
+    """
+
+    def setUp(self):
+        self.test_dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.test_dir, ignore_errors=True)
+
+    def _create_synthetic_wav(self, duration_sec: float = 1.0, sr: int = 44100) -> str:
+        path = os.path.join(self.test_dir, f"test_{int(duration_sec*1000)}.wav")
+        t = np.linspace(0, duration_sec, int(sr * duration_sec), endpoint=False, dtype=np.float32)
+        signal_l = 0.5 * np.sin(2 * np.pi * 440 * t)
+        signal_r = 0.5 * np.cos(2 * np.pi * 554.37 * t)
+        data = np.column_stack([signal_l, signal_r]).astype(np.float32)
+        sf.write(path, data, sr, subtype="PCM_16")
+        return path
+
+    # Perspective 1: Standard User Persona
+    def test_trimmer_disabled_by_default(self):
+        """Ensures trimmer is unchecked and disabled by default across options and configuration."""
+        from audio_processor import AudioSanitizeOptions
+        from config_manager import GhostWaveConfig
+
+        opts = AudioSanitizeOptions()
+        self.assertFalse(opts.trim_duration)
+
+        cfg = GhostWaveConfig()
+        self.assertFalse(cfg.trim_duration)
+
+    def test_gui_advanced_settings_toggle_and_trimmer_default(self):
+        """Verifies collapsible advanced settings toggle and trimmer unchecked state in UI."""
+        import wx
+        from gui import AudioSanitizerPanel
+        from audio_processor import AudioProcessor
+
+        app = wx.App.Get()
+        if not app:
+            app = wx.App(False)
+
+        frame = wx.Frame(None)
+        processor = AudioProcessor()
+        panel = AudioSanitizerPanel(frame, processor, lambda msg: None)
+        try:
+            # 1. Trimmer checkbox is unchecked by default
+            self.assertFalse(panel.trim_chk.IsChecked())
+            self.assertFalse(panel.trim_spin.IsEnabled())
+
+            # 2. Advanced panel is collapsed by default to avoid clutter
+            self.assertFalse(panel.adv_panel.IsShown())
+            self.assertEqual(panel.toggle_adv_btn.GetLabel(), "&Show Advanced Settings")
+            self.assertEqual(panel.toggle_adv_btn.GetName(), "Show Advanced Settings Button")
+
+            # 3. Toggling button expands advanced panel
+            panel.on_toggle_advanced(None)
+            self.assertTrue(panel.adv_panel.IsShown())
+            self.assertEqual(panel.toggle_adv_btn.GetLabel(), "&Hide Advanced Settings")
+
+            # 4. Toggling again collapses it
+            panel.on_toggle_advanced(None)
+            self.assertFalse(panel.adv_panel.IsShown())
+            self.assertEqual(panel.toggle_adv_btn.GetLabel(), "&Show Advanced Settings")
+
+            # 5. Switching presets keeps trimmer unchecked
+            for preset_idx in range(6):
+                panel.preset_choice.SetSelection(preset_idx)
+                panel.on_preset_changed(None)
+                self.assertFalse(panel.trim_chk.IsChecked())
+                self.assertFalse(panel.trim_spin.IsEnabled())
+        finally:
+            frame.Destroy()
+
+    # Perspective 2: Developer Persona (DSP vectorization, caching, benchmarks)
+    def test_dsp_filter_caching(self):
+        """Validates that filter design functions leverage LRU caching."""
+        from audio_processor import _get_cached_butter_sos, _get_cached_bilinear
+
+        # Butterworth caching
+        sos1 = _get_cached_butter_sos(2, 25.0, "hp", 44100)
+        sos2 = _get_cached_butter_sos(2, 25.0, "hp", 44100)
+        self.assertIs(sos1, sos2)
+
+        # Bilinear biquad caching
+        b1, a1 = _get_cached_bilinear(500.0, 0.707, 44100)
+        b2, a2 = _get_cached_bilinear(500.0, 0.707, 44100)
+        self.assertIs(b1, b2)
+        self.assertIs(a1, a2)
+
+    def test_fast_fft_padding_in_bode_shifter(self):
+        """Verifies Hilbert Bode frequency shifter with arbitrary non-power-of-2 lengths."""
+        from audio_processor import apply_bode_frequency_shifter, apply_triple_band_bode_shifter
+
+        sr = 44100
+        samples = 44101
+        data = np.random.uniform(-0.5, 0.5, (samples, 2)).astype(np.float32)
+
+        shifted_single = apply_bode_frequency_shifter(data, sr=sr, shift_hz=8.5)
+        self.assertEqual(shifted_single.shape, data.shape)
+        self.assertTrue(np.all(np.isfinite(shifted_single)))
+
+        shifted_multi = apply_triple_band_bode_shifter(data, sr=sr)
+        self.assertEqual(shifted_multi.shape, data.shape)
+        self.assertTrue(np.all(np.isfinite(shifted_multi)))
+
+    def test_adversarial_peaks_vectorized(self):
+        """Validates vectorized STFT adversarial peak injection produces finite decoy landmarks."""
+        from audio_processor import apply_adversarial_peak_injection
+
+        sr = 44100
+        data = np.random.uniform(-0.4, 0.4, (22050, 2)).astype(np.float32)
+        injected = apply_adversarial_peak_injection(data, sr=sr, intensity=1.15)
+        self.assertEqual(injected.shape, data.shape)
+        self.assertTrue(np.all(np.isfinite(injected)))
+
+    def test_single_pass_regex_blacklist(self):
+        """Validates single-pass regex compilation correctly masks names and profanities."""
+        from lyrics_processor import LyricsProcessor
+
+        lp = LyricsProcessor()
+        text = "Taylor Swift and Drake met Eminem in Hollywood."
+        filtered, changes = lp.filter_celebrities(text)
+        self.assertNotIn("Taylor Swift", filtered)
+        self.assertNotIn("Drake", filtered)
+        self.assertNotIn("Eminem", filtered)
+        self.assertGreaterEqual(len(changes), 3)
+
+    # Perspective 3: Constrained / Lagging Environment Persona
+    def test_cooperative_cancellation(self):
+        """Verifies DSP processing cleanly aborts when cancellation signal is asserted."""
+        import threading
+        from audio_processor import AudioProcessor, AudioSanitizeOptions
+
+        input_wav = self._create_synthetic_wav(duration_sec=3.0)
+        output_wav = os.path.join(self.test_dir, "cancelled_out.wav")
+
+        processor = AudioProcessor()
+        cancel_event = threading.Event()
+        cancel_event.set()
+
+        opts = AudioSanitizeOptions()
+        result = processor.process(input_wav, output_wav, opts, cancel_event=cancel_event)
+        self.assertFalse(result.success)
+        self.assertIn("cancelled", (result.error_message or "").lower())
+        self.assertFalse(os.path.exists(output_wav))
+
+    def test_soft_limiter_prevents_clipping(self):
+        """Verifies soft limiter bounds extreme amplitudes within [-1.0, 1.0]."""
+        from audio_processor import apply_soft_limiting
+
+        extreme_signal = np.array([[2.5, -3.8], [5.0, -10.0]], dtype=np.float32)
+        limited = apply_soft_limiting(extreme_signal, drive_db=3.0)
+        self.assertTrue(np.all(limited <= 1.0))
+        self.assertTrue(np.all(limited >= -1.0))
+
+    def test_zero_byte_file_protection(self):
+        """Verifies zero-byte files are handled gracefully without exceptions."""
+        from audio_processor import AudioProcessor
+
+        empty_file = os.path.join(self.test_dir, "empty.wav")
+        open(empty_file, "w").close()
+
+        processor = AudioProcessor()
+        info = processor.inspect_file(empty_file)
+        self.assertEqual(info.duration_seconds, 0.0)
+        self.assertEqual(info.duration_formatted, "00:00")
+
+
 if __name__ == "__main__":
     unittest.main()
 

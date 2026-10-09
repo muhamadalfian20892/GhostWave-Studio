@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -49,7 +50,7 @@ class BlacklistDialog(wx.Dialog):
     def __init__(self, parent: wx.Window, lyrics_processor: LyricsProcessor):
         super().__init__(
             parent,
-            title="Edit Celebrity Blacklist - GhostWave Studio v1.0",
+            title=f"Edit Celebrity Blacklist - GhostWave Studio v{APP_VERSION}",
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(520, 560)
         )
@@ -154,7 +155,7 @@ class CloudApiDialog(wx.Dialog):
     def __init__(self, parent: wx.Window):
         super().__init__(
             parent,
-            title="Cloud API Settings (Encrypted .sn Vault) - GhostWave Studio v1.0",
+            title=f"Cloud API Settings (Encrypted .sn Vault) - GhostWave Studio v{APP_VERSION}",
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(560, 440)
         )
@@ -277,7 +278,7 @@ class LyricsCloudDialog(wx.Dialog):
     def __init__(self, parent: wx.Window):
         super().__init__(
             parent,
-            title="Lyrics Cloud LLM Settings - GhostWave Studio v1.0",
+            title=f"Lyrics Cloud LLM Settings - GhostWave Studio v{APP_VERSION}",
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(560, 420)
         )
@@ -395,7 +396,7 @@ class EvasionAuditDialog(wx.Dialog):
     def __init__(self, parent: wx.Window, metrics: dict, orig_file: str, sani_file: str):
         super().__init__(
             parent,
-            title="Acoustic Evasion Safety Audit - GhostWave Studio v1.0",
+            title=f"Acoustic Evasion Safety Audit - GhostWave Studio v{APP_VERSION}",
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(580, 500)
         )
@@ -467,7 +468,7 @@ class SunoCheatSheetDialog(wx.Dialog):
     def __init__(self, parent: wx.Window):
         super().__init__(
             parent,
-            title="GhostWave Stealth Protocol & Suno Cheat Sheet - v1.0",
+            title=f"GhostWave Stealth Protocol & Suno Cheat Sheet - v{APP_VERSION}",
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(640, 560)
         )
@@ -561,7 +562,7 @@ class AbsAudioSlicerDialog(wx.Dialog):
     def __init__(self, parent: wx.Window, audio_processor: AudioProcessor, initial_file: Optional[str] = None):
         super().__init__(
             parent,
-            title="ABS Audio Slicer - GhostWave Studio v1.0",
+            title=f"ABS Audio Slicer - GhostWave Studio v{APP_VERSION}",
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(580, 520)
         )
@@ -757,6 +758,7 @@ class AudioSanitizerPanel(wx.Panel):
         self.selected_file_path: Optional[str] = None
         self.last_output_path: Optional[str] = None
         self.is_processing = False
+        self.cancel_event: Optional[threading.Event] = None
 
         self._build_ui()
 
@@ -836,49 +838,13 @@ class AudioSanitizerPanel(wx.Panel):
         self.cloud_btn.Bind(wx.EVT_BUTTON, self.on_cloud_settings)
         preset_sizer.Add(self.cloud_btn, 0, wx.ALIGN_CENTER_VERTICAL)
 
-        param_box_sizer.Add(preset_sizer, 0, wx.EXPAND | wx.ALL, 8)
+        param_box_sizer.Add(preset_sizer, 0, wx.EXPAND | wx.ALL, 6)
 
-        grid_sizer = wx.FlexGridSizer(cols=2, vgap=8, hgap=15)
-        grid_sizer.AddGrowableCol(1, 1)
-
-        # Macro Key Transposition / Pitch Shift
-        pitch_label = wx.StaticText(self, label="Key Transposition (Semitones):")
-        pitch_label.SetName("Micro Pitch Shift Label")
-        grid_sizer.Add(pitch_label, 0, wx.ALIGN_CENTER_VERTICAL)
-
-        self.pitch_spin = wx.SpinCtrlDouble(
-            self,
-            value="2.5",
-            min=-12.0,
-            max=12.0,
-            inc=0.5,
-            name="Micro Pitch Shift (Semitones/Cents)"
-        )
-        self.pitch_spin.SetDigits(1)
-        self.pitch_spin.SetToolTip("Shift pitch by macro interval (e.g. +2.5 st) to disrupt neural melody and chord embeddings.")
-        grid_sizer.Add(self.pitch_spin, 0, wx.EXPAND)
-
-        # Tempo Adjustment
-        tempo_label = wx.StaticText(self, label="Tempo Shift Factor:")
-        tempo_label.SetName("Tempo Shift Factor Label")
-        grid_sizer.Add(tempo_label, 0, wx.ALIGN_CENTER_VERTICAL)
-
-        self.tempo_spin = wx.SpinCtrlDouble(
-            self,
-            value="0.940",
-            min=0.850,
-            max=1.150,
-            inc=0.010,
-            name="Tempo Shift Factor"
-        )
-        self.tempo_spin.SetDigits(3)
-        self.tempo_spin.SetToolTip("Modify playback tempo (e.g. 0.940 = -6%) to disrupt fingerprint time scales.")
-        grid_sizer.Add(self.tempo_spin, 0, wx.EXPAND)
-
-        # Export Format
+        # Basic Format & Advanced Toggle Row
+        format_sizer = wx.BoxSizer(wx.HORIZONTAL)
         format_label = wx.StaticText(self, label="Export Format & Bitrate:")
         format_label.SetName("Export Format Label")
-        grid_sizer.Add(format_label, 0, wx.ALIGN_CENTER_VERTICAL)
+        format_sizer.Add(format_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
 
         self.format_choice = wx.Choice(
             self,
@@ -890,9 +856,62 @@ class AudioSanitizerPanel(wx.Panel):
             name="Export Format and Bitrate"
         )
         self.format_choice.SetSelection(0)
-        grid_sizer.Add(self.format_choice, 0, wx.EXPAND)
+        format_sizer.Add(self.format_choice, 1, wx.EXPAND | wx.RIGHT, 10)
 
-        param_box_sizer.Add(grid_sizer, 0, wx.EXPAND | wx.ALL, 8)
+        self.toggle_adv_btn = wx.Button(
+            self,
+            label="&Show Advanced Settings",
+            name="Show Advanced Settings Button"
+        )
+        self.toggle_adv_btn.SetToolTip("Show or hide advanced DSP tuning sliders, evasion checkboxes, and trimmer (Hotkey: Alt+S in this tab).")
+        self.toggle_adv_btn.Bind(wx.EVT_BUTTON, self.on_toggle_advanced)
+        format_sizer.Add(self.toggle_adv_btn, 0, wx.ALIGN_CENTER_VERTICAL)
+
+        param_box_sizer.Add(format_sizer, 0, wx.EXPAND | wx.ALL, 6)
+
+        # Advanced Settings Collapsible Panel
+        self.adv_panel = wx.Panel(self, style=wx.TAB_TRAVERSAL)
+        self.adv_panel.SetName("Advanced DSP Settings Panel")
+        adv_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        grid_sizer = wx.FlexGridSizer(cols=2, vgap=6, hgap=15)
+        grid_sizer.AddGrowableCol(1, 1)
+
+        # Macro Key Transposition / Pitch Shift
+        pitch_label = wx.StaticText(self.adv_panel, label="Key Transposition (Semitones):")
+        pitch_label.SetName("Micro Pitch Shift Label")
+        grid_sizer.Add(pitch_label, 0, wx.ALIGN_CENTER_VERTICAL)
+
+        self.pitch_spin = wx.SpinCtrlDouble(
+            self.adv_panel,
+            value="2.5",
+            min=-12.0,
+            max=12.0,
+            inc=0.5,
+            name="Micro Pitch Shift (Semitones/Cents)"
+        )
+        self.pitch_spin.SetDigits(1)
+        self.pitch_spin.SetToolTip("Shift pitch by macro interval (e.g. +2.5 st) to disrupt neural melody and chord embeddings.")
+        grid_sizer.Add(self.pitch_spin, 0, wx.EXPAND)
+
+        # Tempo Adjustment
+        tempo_label = wx.StaticText(self.adv_panel, label="Tempo Shift Factor:")
+        tempo_label.SetName("Tempo Shift Factor Label")
+        grid_sizer.Add(tempo_label, 0, wx.ALIGN_CENTER_VERTICAL)
+
+        self.tempo_spin = wx.SpinCtrlDouble(
+            self.adv_panel,
+            value="0.940",
+            min=0.850,
+            max=1.150,
+            inc=0.010,
+            name="Tempo Shift Factor"
+        )
+        self.tempo_spin.SetDigits(3)
+        self.tempo_spin.SetToolTip("Modify playback tempo (e.g. 0.940 = -6%) to disrupt fingerprint time scales.")
+        grid_sizer.Add(self.tempo_spin, 0, wx.EXPAND)
+
+        adv_sizer.Add(grid_sizer, 0, wx.EXPAND | wx.ALL, 4)
 
         # Multi-Vector Evasion Checkboxes
         chk_sizer = wx.FlexGridSizer(cols=2, vgap=4, hgap=12)
@@ -900,107 +919,107 @@ class AudioSanitizerPanel(wx.Panel):
         chk_sizer.AddGrowableCol(1, 1)
 
         self.jitter_chk = wx.CheckBox(
-            self,
+            self.adv_panel,
             label="Dynamic Micro-Chrono Jitter (Anti-Landmark / Anti-DTW)",
             name="Dynamic Micro-Chrono Jitter Checkbox"
         )
         self.jitter_chk.SetValue(True)
-        self.jitter_chk.SetToolTip("Applies stochastic time-warping (±16 ms) to flatten offset alignment histograms.")
-        chk_sizer.Add(self.jitter_chk, 0, wx.ALL, 3)
+        self.jitter_chk.SetToolTip("Applies stochastic time-warping (+/-16 ms) to flatten offset alignment histograms.")
+        chk_sizer.Add(self.jitter_chk, 0, wx.ALL, 2)
 
         self.bode_chk = wx.CheckBox(
-            self,
+            self.adv_panel,
             label="Hilbert Bode Frequency Shifter (+8.5 Hz Anti-Chroma)",
             name="Hilbert Bode Frequency Shifter Checkbox"
         )
         self.bode_chk.SetValue(True)
         self.bode_chk.SetToolTip("Decouples harmonic overtones and breaks CQT chroma pitch classes.")
-        chk_sizer.Add(self.bode_chk, 0, wx.ALL, 3)
+        chk_sizer.Add(self.bode_chk, 0, wx.ALL, 2)
 
         self.decoy_chk = wx.CheckBox(
-            self,
+            self.adv_panel,
             label="Adversarial Pseudo-Peak Injection (STFT Decoy Landmarks)",
             name="Adversarial Pseudo-Peak Injection Checkbox"
         )
         self.decoy_chk.SetValue(True)
         self.decoy_chk.SetToolTip("Injects psychoacoustically placed decoy peaks into STFT bins to hijack landmark extractors.")
-        chk_sizer.Add(self.decoy_chk, 0, wx.ALL, 3)
+        chk_sizer.Add(self.decoy_chk, 0, wx.ALL, 2)
 
         self.allpass_chk = wx.CheckBox(
-            self,
+            self.adv_panel,
             label="Schroeder All-Pass Phase Dispersion (Flat Frequency Mag)",
             name="Schroeder All-Pass Phase Dispersion Checkbox"
         )
         self.allpass_chk.SetValue(True)
         self.allpass_chk.SetToolTip("Scrambles phase and disperses transients without altering frequency magnitude.")
-        chk_sizer.Add(self.allpass_chk, 0, wx.ALL, 3)
+        chk_sizer.Add(self.allpass_chk, 0, wx.ALL, 2)
 
         self.reamping_chk = wx.CheckBox(
-            self,
+            self.adv_panel,
             label="Virtual Acoustic Re-Amping (Studio Room Simulation)",
             name="Virtual Acoustic Re-Amping Checkbox"
         )
         self.reamping_chk.SetValue(True)
         self.reamping_chk.SetToolTip("Convolves with room reflections to simulate re-recording through a monitor speaker.")
-        chk_sizer.Add(self.reamping_chk, 0, wx.ALL, 3)
+        chk_sizer.Add(self.reamping_chk, 0, wx.ALL, 2)
 
         self.vocal_chk = wx.CheckBox(
-            self,
+            self.adv_panel,
             label="Center Vocal Suppression & Anti-Whisper Scrambler",
             name="Center Vocal Suppression Checkbox"
         )
         self.vocal_chk.SetValue(True)
         self.vocal_chk.SetToolTip("Mid/side vocal cancellation, swept formant ring modulation, and phoneme blurring.")
-        chk_sizer.Add(self.vocal_chk, 0, wx.ALL, 3)
+        chk_sizer.Add(self.vocal_chk, 0, wx.ALL, 2)
 
         self.preamble_chk = wx.CheckBox(
-            self,
+            self.adv_panel,
             label="Front-End Preamble Camouflage (3.5s Analog Synth Intro)",
             name="Front-End Preamble Camouflage Checkbox"
         )
         self.preamble_chk.SetValue(True)
         self.preamble_chk.SetToolTip("Prepend warm analog intro pad crossfaded into the track to displace frame 0.")
-        chk_sizer.Add(self.preamble_chk, 0, wx.ALL, 3)
+        chk_sizer.Add(self.preamble_chk, 0, wx.ALL, 2)
 
         self.filter_chk = wx.CheckBox(
-            self,
+            self.adv_panel,
             label="Apply 25 Hz High-Pass & 18 kHz Low-Pass filter to strip fingerprint metadata",
             name="Apply 25 Hz High-Pass and 18 kHz Low-Pass filter to strip fingerprint metadata"
         )
         self.filter_chk.SetValue(True)
-        chk_sizer.Add(self.filter_chk, 0, wx.ALL, 3)
+        chk_sizer.Add(self.filter_chk, 0, wx.ALL, 2)
 
         self.dither_chk = wx.CheckBox(
-            self,
+            self.adv_panel,
             label="Add ultra-low floor dither (-65 dB) to break spectral hash",
             name="Add ultra-low floor dither (-65 dB) to break spectral hash"
         )
         self.dither_chk.SetValue(True)
-        chk_sizer.Add(self.dither_chk, 0, wx.ALL, 3)
+        chk_sizer.Add(self.dither_chk, 0, wx.ALL, 2)
 
         self.metadata_chk = wx.CheckBox(
-            self,
+            self.adv_panel,
             label="Automatically strip all ID3 tags, artist tags, and album art from output",
             name="Automatically strip all ID3 tags, artist tags, and album art from output"
         )
         self.metadata_chk.SetValue(True)
-        chk_sizer.Add(self.metadata_chk, 0, wx.ALL, 3)
+        chk_sizer.Add(self.metadata_chk, 0, wx.ALL, 2)
 
-        param_box_sizer.Add(chk_sizer, 0, wx.EXPAND | wx.ALL, 6)
+        adv_sizer.Add(chk_sizer, 0, wx.EXPAND | wx.ALL, 4)
 
-        # Trimmer sizer
+        # Trimmer sizer (Default unchecked for short clip)
         trim_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.trim_chk = wx.CheckBox(
-            self,
+            self.adv_panel,
             label="Trim audio to maximum duration for Suno free tier safety:",
             name="Trim audio to maximum duration for Suno free tier safety"
         )
-        self.trim_chk.SetValue(True)
+        self.trim_chk.SetValue(False)
         self.trim_chk.Bind(wx.EVT_CHECKBOX, self.on_toggle_trim)
         trim_sizer.Add(self.trim_chk, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         self.trim_spin = wx.SpinCtrlDouble(
-            self,
+            self.adv_panel,
             value="24.0",
             min=5.0,
             max=600.0,
@@ -1008,13 +1027,18 @@ class AudioSanitizerPanel(wx.Panel):
             name="Maximum Audio Duration in Seconds"
         )
         self.trim_spin.SetDigits(1)
+        self.trim_spin.Enable(False)
         trim_sizer.Add(self.trim_spin, 0, wx.ALIGN_CENTER_VERTICAL)
 
-        seconds_label = wx.StaticText(self, label="seconds")
+        seconds_label = wx.StaticText(self.adv_panel, label="seconds")
         seconds_label.SetName("Seconds Unit Label")
         trim_sizer.Add(seconds_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
 
-        param_box_sizer.Add(trim_sizer, 0, wx.ALL, 6)
+        adv_sizer.Add(trim_sizer, 0, wx.ALL, 4)
+
+        self.adv_panel.SetSizer(adv_sizer)
+        self.adv_panel.Show(False)
+        param_box_sizer.Add(self.adv_panel, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
 
         main_sizer.Add(param_box_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
@@ -1031,6 +1055,16 @@ class AudioSanitizerPanel(wx.Panel):
         self.process_btn.SetToolTip("Process the audio file with selected parameters and save output (Hotkey: Alt+P).")
         self.process_btn.Bind(wx.EVT_BUTTON, self.on_process)
         action_sizer.Add(self.process_btn, 0, wx.RIGHT, 8)
+
+        self.cancel_btn = wx.Button(
+            self,
+            label="&Cancel Process",
+            name="Cancel Audio Processing Button"
+        )
+        self.cancel_btn.SetToolTip("Cancel ongoing audio sanitization immediately.")
+        self.cancel_btn.Bind(wx.EVT_BUTTON, self.on_cancel_processing)
+        self.cancel_btn.Enable(False)
+        action_sizer.Add(self.cancel_btn, 0, wx.RIGHT, 8)
 
         self.audit_btn = wx.Button(
             self,
@@ -1087,14 +1121,37 @@ class AudioSanitizerPanel(wx.Panel):
 
         self.SetSizer(main_sizer)
 
+    def on_toggle_advanced(self, event: wx.CommandEvent):
+        show_adv = not self.adv_panel.IsShown()
+        self.adv_panel.Show(show_adv)
+        if show_adv:
+            self.toggle_adv_btn.SetLabel("&Hide Advanced Settings")
+            self.toggle_adv_btn.SetToolTip("Collapse advanced DSP tuning controls.")
+        else:
+            self.toggle_adv_btn.SetLabel("&Show Advanced Settings")
+            self.toggle_adv_btn.SetToolTip("Expand advanced DSP tuning controls and evasion flags.")
+        self.Layout()
+        parent = self.GetTopLevelParent()
+        if parent:
+            parent.Layout()
+            parent.Refresh()
+
+    def on_cancel_processing(self, event: wx.CommandEvent):
+        if self.is_processing and self.cancel_event:
+            self.cancel_event.set()
+            self.cancel_btn.Enable(False)
+            self.set_status("Cancelling audio processing...")
+            self.log_ctrl.AppendText("\nCancellation signal sent to worker thread...\n")
+
     def on_preset_changed(self, event: wx.CommandEvent):
         idx = self.preset_choice.GetSelection()
         if idx == 0:  # Zero-Match Nuclear Cloak (Ultra Evasion)
             self.pitch_spin.SetValue(2.5)
             self.tempo_spin.SetValue(0.940)
             self.format_choice.SetSelection(0)  # WAV
-            self.trim_chk.SetValue(True)
+            self.trim_chk.SetValue(False)
             self.trim_spin.SetValue(24.0)
+            self.trim_spin.Enable(False)
             self.jitter_chk.SetValue(True)
             self.bode_chk.SetValue(True)
             self.decoy_chk.SetValue(True)
@@ -1106,8 +1163,9 @@ class AudioSanitizerPanel(wx.Panel):
             self.pitch_spin.SetValue(1.5)
             self.tempo_spin.SetValue(0.970)
             self.format_choice.SetSelection(0)  # WAV
-            self.trim_chk.SetValue(True)
+            self.trim_chk.SetValue(False)
             self.trim_spin.SetValue(28.0)
+            self.trim_spin.Enable(False)
             self.jitter_chk.SetValue(True)
             self.bode_chk.SetValue(True)
             self.decoy_chk.SetValue(False)
@@ -1118,6 +1176,8 @@ class AudioSanitizerPanel(wx.Panel):
         elif idx == 2:  # Acoustic Re-Amping & Room Simulation
             self.pitch_spin.SetValue(1.0)
             self.tempo_spin.SetValue(0.980)
+            self.trim_chk.SetValue(False)
+            self.trim_spin.Enable(False)
             self.jitter_chk.SetValue(False)
             self.bode_chk.SetValue(False)
             self.decoy_chk.SetValue(False)
@@ -1128,6 +1188,8 @@ class AudioSanitizerPanel(wx.Panel):
         elif idx == 3:  # Bode Frequency Shifter & Anti-Chroma
             self.pitch_spin.SetValue(2.0)
             self.tempo_spin.SetValue(0.950)
+            self.trim_chk.SetValue(False)
+            self.trim_spin.Enable(False)
             self.jitter_chk.SetValue(True)
             self.bode_chk.SetValue(True)
             self.decoy_chk.SetValue(True)
@@ -1138,6 +1200,8 @@ class AudioSanitizerPanel(wx.Panel):
         elif idx == 4:  # Anti-Whisper / Vocal Scrambler Only
             self.pitch_spin.SetValue(0.0)
             self.tempo_spin.SetValue(1.000)
+            self.trim_chk.SetValue(False)
+            self.trim_spin.Enable(False)
             self.jitter_chk.SetValue(False)
             self.bode_chk.SetValue(False)
             self.decoy_chk.SetValue(False)
@@ -1149,6 +1213,8 @@ class AudioSanitizerPanel(wx.Panel):
             self.pitch_spin.SetValue(2.0)
             self.tempo_spin.SetValue(0.950)
             self.format_choice.SetSelection(0)  # WAV
+            self.trim_chk.SetValue(False)
+            self.trim_spin.Enable(False)
             self.jitter_chk.SetValue(True)
             self.bode_chk.SetValue(True)
             self.decoy_chk.SetValue(False)
@@ -1289,8 +1355,10 @@ class AudioSanitizerPanel(wx.Panel):
         self._start_processing_thread(self.selected_file_path, output_path, options)
 
     def _start_processing_thread(self, input_path: str, output_path: str, options: AudioSanitizeOptions):
+        self.cancel_event = threading.Event()
         self.is_processing = True
         self.process_btn.Enable(False)
+        self.cancel_btn.Enable(True)
         self.browse_btn.Enable(False)
         self.audit_btn.Enable(False)
         self.gauge.SetValue(0)
@@ -1299,10 +1367,24 @@ class AudioSanitizerPanel(wx.Panel):
         self.set_status("Processing audio file... Please wait.")
 
         def worker():
-            def progress_cb(pct: int, msg: str):
-                wx.CallAfter(self._update_progress, pct, msg)
+            last_update = [0.0]
+            last_pct = [-1]
 
-            result = self.processor.process(input_path, output_path, options, progress_callback=progress_cb)
+            def progress_cb(pct: int, msg: str):
+                now = time.time()
+                # Throttle progress callbacks to prevent event loop queue flooding on constrained CPUs
+                if pct == 100 or pct == 0 or (now - last_update[0] >= 0.04 and abs(pct - last_pct[0]) >= 2):
+                    last_update[0] = now
+                    last_pct[0] = pct
+                    wx.CallAfter(self._update_progress, pct, msg)
+
+            result = self.processor.process(
+                input_path,
+                output_path,
+                options,
+                progress_callback=progress_cb,
+                cancel_event=self.cancel_event
+            )
             wx.CallAfter(self._on_processing_finished, result)
 
         thread = threading.Thread(target=worker, daemon=True)
@@ -1315,6 +1397,7 @@ class AudioSanitizerPanel(wx.Panel):
 
     def _on_processing_finished(self, result: AudioProcessResult):
         self.is_processing = False
+        self.cancel_btn.Enable(False)
         self.process_btn.Enable(True)
         self.browse_btn.Enable(True)
         self.gauge.SetValue(100 if result.success else 0)
@@ -1340,6 +1423,15 @@ class AudioSanitizerPanel(wx.Panel):
                 f"Duration: {result.final_duration:.2f} seconds\n"
                 f"Acoustic fingerprints decoupled and all metadata stripped.{audit_txt}",
                 "Processing Complete",
+                wx.OK | wx.ICON_INFORMATION,
+                self
+            )
+        elif result.error_message and "cancelled" in result.error_message.lower():
+            self.set_status("Audio processing cancelled by user.")
+            self.log_ctrl.AppendText("\nProcess was cancelled by the user. Output discarded.\n")
+            wx.MessageBox(
+                "Audio processing operation was cancelled.",
+                "Processing Cancelled",
                 wx.OK | wx.ICON_INFORMATION,
                 self
             )
@@ -1746,14 +1838,14 @@ class LyricsSanitizerPanel(wx.Panel):
 
 class GhostWaveFrame(wx.Frame):
     """
-    Main Application Window for GhostWave Studio v1.0 - Next-Gen Stealth Audio Cloak.
+    Main Application Window for GhostWave Studio - Next-Gen Stealth Audio Cloak.
     """
 
     def __init__(self):
         super().__init__(
             parent=None,
             id=wx.ID_ANY,
-            title="GhostWave Studio v1.0 - Next-Gen Stealth Audio Cloak",
+            title=f"GhostWave Studio v{APP_VERSION} - Next-Gen Stealth Audio Cloak",
             size=(900, 760),
             style=wx.DEFAULT_FRAME_STYLE
         )
@@ -1767,7 +1859,7 @@ class GhostWaveFrame(wx.Frame):
         # Build Status Bar for accessible live announcements
         self.statusbar = self.CreateStatusBar(1, wx.STB_DEFAULT_STYLE)
         self.statusbar.SetName("Application Status Bar")
-        self.set_status_text("Ready. GhostWave Studio v1.0 initialized with encrypted profile vault (.sn).")
+        self.set_status_text(f"Ready. GhostWave Studio v{APP_VERSION} initialized with encrypted profile vault (.sn).")
 
         # Build Menu Bar
         self._build_menu()
@@ -1850,7 +1942,7 @@ class GhostWaveFrame(wx.Frame):
         protocol_help_item = help_menu.Append(wx.ID_ANY, "Stealth &Upload Protocol && Cheat Sheet...\tShift+F1", "View battle-tested Suno upload cheat sheet")
         check_update_item = help_menu.Append(wx.ID_ANY, "Check for &Updates...", "Check GitHub for latest release and changelog")
         a11y_item = help_menu.Append(wx.ID_HELP, "&Accessibility Guide\tF1", "View screen reader accessibility shortcuts")
-        about_item = help_menu.Append(wx.ID_ABOUT, "&About GhostWave Studio v1.0", "About this application")
+        about_item = help_menu.Append(wx.ID_ABOUT, f"&About GhostWave Studio v{APP_VERSION}", "About this application")
         menu_bar.Append(help_menu, "&Help")
 
         self.SetMenuBar(menu_bar)
@@ -1972,7 +2064,7 @@ class GhostWaveFrame(wx.Frame):
 
     def on_accessibility_guide(self, event: wx.CommandEvent):
         guide = (
-            "GhostWave Studio v1.0 - Screen Reader Accessibility Guide\n\n"
+            f"GhostWave Studio v{APP_VERSION} - Screen Reader Accessibility Guide\n\n"
             "Key Navigation Shortcuts:\n"
             "• Tab / Shift+Tab: Move forward / backward between controls.\n"
             "• Ctrl+Tab / Ctrl+Shift+Tab: Switch between Audio and Lyrics tabs.\n"
@@ -1997,7 +2089,7 @@ class GhostWaveFrame(wx.Frame):
 
     def on_about(self, event: wx.CommandEvent):
         about_text = (
-            "GhostWave Studio v1.0\n\n"
+            f"GhostWave Studio v{APP_VERSION}\n\n"
             "Next-Generation Acoustic Stealth & Audio Cloaking Engine.\n"
             "Transforms audio into untraceable acoustic ghosts that defeat automated "
             "content recognition (Audible Magic & VIBE) and speech transcription filters.\n\n"
@@ -2017,7 +2109,7 @@ class GhostWaveFrame(wx.Frame):
             "• Chromaprint Evasion Benchmark: Quantitative acoustic verification.\n"
             "• Strict Screen Reader Accessibility (MSAA/UIA compliant)."
         )
-        wx.MessageBox(about_text, "About GhostWave Studio v1.0", wx.OK | wx.ICON_INFORMATION, self)
+        wx.MessageBox(about_text, f"About GhostWave Studio v{APP_VERSION}", wx.OK | wx.ICON_INFORMATION, self)
 
 
 # Backward-compatible alias

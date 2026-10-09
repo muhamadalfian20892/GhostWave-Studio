@@ -61,12 +61,45 @@ import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional, Sequence, Tuple
+import functools
+import threading
 
 import numpy as np
+import scipy.fft as fft
 import scipy.signal as signal
 import soundfile as sf
 
 from cloud_stem_api import CloudApiConfig, CloudStemClient, CloudSeparationResult
+
+
+@functools.lru_cache(maxsize=128)
+def _get_cached_butter_sos(order: int, cutoffs, btype: str, fs: int):
+    if isinstance(cutoffs, (int, float)):
+        val = float(cutoffs)
+    elif isinstance(cutoffs, tuple):
+        val = cutoffs[0] if len(cutoffs) == 1 else list(cutoffs)
+    else:
+        val = cutoffs
+    return signal.butter(order, val, btype=btype, fs=fs, output='sos')
+
+
+@functools.lru_cache(maxsize=128)
+def _get_cached_bilinear(w0: float, q_factor: float, fs: int):
+    b_s = [1.0, -w0 / q_factor, w0 ** 2]
+    a_s = [1.0, w0 / q_factor, w0 ** 2]
+    return signal.bilinear(b_s, a_s, fs)
+
+
+def apply_soft_limiting(data: np.ndarray, threshold: float = 0.95, drive_db: float = 0.0) -> np.ndarray:
+    """Softly limits peaks that exceed threshold using hyperbolic tangent to avoid digital clipping."""
+    out = data
+    if drive_db != 0.0:
+        gain = 10.0 ** (drive_db / 20.0)
+        out = out * gain
+    peak = float(np.max(np.abs(out)))
+    if peak <= threshold:
+        return out.astype(np.float32)
+    return (np.tanh(out / threshold) * threshold).astype(np.float32)
 
 
 @dataclass
@@ -153,7 +186,7 @@ class AudioSanitizeOptions:
     # Export specifications
     peak_target_db: float = -0.5             # Peak normalize to -0.5 dBFS
     target_sample_rate: int = 44100          # 44.1 kHz standard
-    trim_duration: bool = True               # Trim to stay within safety limits
+    trim_duration: bool = False              # Trim to stay within safety limits (disabled by default in v1.2.0)
     max_duration_seconds: float = 28.0       # Optimal duration: 24-28 seconds sweet spot
     strip_metadata: bool = True              # Strip all container metadata
     output_bitrate: str = "wav"              # "wav" (Recommended on Suno) or "320k"
@@ -181,9 +214,12 @@ def load_audio_samples(file_path: str, target_sr: int = 44100) -> Tuple[np.ndarr
     """
     Loads audio samples as float32 in [-1.0, 1.0] from any format (WAV, MP3, FLAC, M4A, etc.).
     Resamples to target_sr (44.1 kHz) if source sample rate differs.
+    Guarantees finite samples and safe handling of zero-length files.
     """
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
+    if os.path.getsize(file_path) == 0:
+        raise ValueError(f"Audio file is empty (0 bytes): {file_path}")
 
     try:
         data, sr = sf.read(file_path, dtype='float32')
@@ -202,7 +238,11 @@ def load_audio_samples(file_path: str, target_sr: int = 44100) -> Tuple[np.ndarr
         data = signal.resample(data, new_samples, axis=0)
         sr = target_sr
 
-    return data.astype(np.float32), sr
+    data = np.asarray(data, dtype=np.float32)
+    if not np.isfinite(data).all():
+        data = np.nan_to_num(data, nan=0.0, posinf=1.0, neginf=-1.0)
+
+    return data, sr
 
 
 def export_clean_audio(
@@ -215,13 +255,14 @@ def export_clean_audio(
     """
     Exports audio data to disk at 44.1 kHz 16-bit PCM WAV or CBR 320 kbps MP3
     with zero ID3 metadata chunks, RIFF tags, encoder tags, or padding.
-    Uses FFmpeg with bitexact flags for maximal sanitization.
+    Uses FFmpeg with multi-threading and bitexact flags for maximal sanitization.
     """
     out_ext = Path(output_path).suffix.lower()
     temp_wav = str(Path(output_path).with_suffix(".temp_clean_exp.wav"))
     ffmpeg_bin = shutil.which("ffmpeg")
 
-    clean_data = np.clip(data, -1.0, 1.0)
+    clean_data = apply_soft_limiting(data, threshold=0.98)
+    clean_data = np.clip(clean_data, -1.0, 1.0)
 
     try:
         sf.write(temp_wav, clean_data, sr, subtype='PCM_16')
@@ -230,8 +271,11 @@ def export_clean_audio(
             bitrate_arg = output_bitrate if output_bitrate.endswith("k") else f"{output_bitrate}k"
             cmd = [ffmpeg_bin, "-y", "-i", temp_wav]
 
+            threads_count = min(4, os.cpu_count() or 2)
+            cmd.extend(["-threads", str(threads_count)])
+
             if out_ext == ".mp3":
-                cmd.extend(["-c:a", "libmp3lame", "-b:a", bitrate_arg, "-ar", str(sr)])
+                cmd.extend(["-c:a", "libmp3lame", "-b:a", bitrate_arg, "-ar", str(sr), "-preset", "veryfast"])
             elif out_ext == ".wav":
                 cmd.extend(["-c:a", "pcm_s16le", "-ar", str(sr)])
             elif out_ext == ".flac":
@@ -284,30 +328,30 @@ def apply_micro_chrono_jitter(
     Applies continuous, non-linear dynamic time-warping (stochastic wow-and-flutter).
     Warping the local time grid shifts landmark-to-landmark delta times Δt constantly,
     completely destroying the diagonal alignment peak in Audible Magic / Shazam offset histograms.
+    Vectorized in float32 with minimal buffer reallocation.
     """
     n_samples = len(data)
     if n_samples <= sr:
         return data
 
-    t = np.linspace(0, float(n_samples) / float(sr), n_samples, endpoint=False, dtype=np.float64)
+    t = np.linspace(0, float(n_samples) / float(sr), n_samples, endpoint=False, dtype=np.float32)
 
-    drift_sec = (max_jitter_ms / 1000.0) * (
-        0.65 * np.sin(2.0 * np.pi * lfo_f1 * t) +
-        0.35 * np.cos(2.0 * np.pi * lfo_f2 * t + 0.4)
+    drift_sec = np.float32(max_jitter_ms / 1000.0) * (
+        np.float32(0.65) * np.sin(np.float32(2.0 * np.pi * lfo_f1) * t) +
+        np.float32(0.35) * np.cos(np.float32(2.0 * np.pi * lfo_f2) * t + np.float32(0.4))
     )
 
-    t_warped = t + drift_sec
-    sample_indices = np.clip(t_warped * sr, 0.0, float(n_samples - 1))
+    sample_indices = np.clip((t + drift_sec) * np.float32(sr), 0.0, float(n_samples - 1))
 
     idx0 = np.floor(sample_indices).astype(np.int64)
     idx1 = np.clip(idx0 + 1, 0, n_samples - 1)
-    frac = (sample_indices - idx0)
+    frac = (sample_indices - idx0).astype(np.float32)
 
     if data.ndim == 1:
-        out = data[idx0] * (1.0 - frac) + data[idx1] * frac
+        out = data[idx0] * (np.float32(1.0) - frac) + data[idx1] * frac
     else:
         frac = frac[:, None]
-        out = data[idx0] * (1.0 - frac) + data[idx1] * frac
+        out = data[idx0] * (np.float32(1.0) - frac) + data[idx1] * frac
 
     return out.astype(np.float32)
 
@@ -326,12 +370,14 @@ def apply_bode_frequency_shifter(
     Shifts all frequency components by a constant offset Δf in Hertz using Hilbert
     transform single-sideband analytic modulation.
     Destroys integer harmonic ratios (2f, 3f, 4f) and disperses CQT chroma pitch classes.
+    Uses next_fast_len to guarantee O(N log N) FFT execution without prime factorization lag.
     """
     n_samples = len(data)
     t = np.linspace(0, float(n_samples) / float(sr), n_samples, endpoint=False, dtype=np.float32)
-    carrier_phase = 2.0 * np.pi * shift_hz * t
+    carrier_phase = (2.0 * np.pi * shift_hz) * t
 
-    analytic = signal.hilbert(data, axis=0)
+    fast_n = fft.next_fast_len(n_samples)
+    analytic = signal.hilbert(data, N=fast_n, axis=0)[:n_samples]
 
     if data.ndim == 1:
         rot = np.exp(1j * carrier_phase)
@@ -355,28 +401,30 @@ def apply_triple_band_bode_shifter(
     Sub-bass (<200 Hz): kept untouched for solid punch.
     Mid-band (200 Hz - 3.8 kHz): shifted by +mid_shift_hz (+12 Hz).
     High-band (>3.8 kHz): shifted by top_shift_hz (-16 Hz).
-    Destroys inter-band harmonic overtone alignment completely across all registers.
+    Uses cached filter designs and fast composite FFT lengths.
     """
     n_samples = len(data)
     t = np.linspace(0, float(n_samples) / float(sr), n_samples, endpoint=False, dtype=np.float32)
 
-    sos_bass = signal.butter(2, 200.0, btype='lp', fs=sr, output='sos')
-    sos_mid = signal.butter(2, [200.0, 3800.0], btype='bandpass', fs=sr, output='sos')
-    sos_top = signal.butter(2, 3800.0, btype='hp', fs=sr, output='sos')
+    sos_bass = _get_cached_butter_sos(2, (200.0,), 'lp', sr)
+    sos_mid = _get_cached_butter_sos(2, (200.0, 3800.0), 'bandpass', sr)
+    sos_top = _get_cached_butter_sos(2, (3800.0,), 'hp', sr)
 
     bass = signal.sosfilt(sos_bass, data, axis=0)
     mids = signal.sosfilt(sos_mid, data, axis=0)
     top = signal.sosfilt(sos_top, data, axis=0)
 
+    fast_n = fft.next_fast_len(n_samples)
+
     # Shift mids
-    analytic_mid = signal.hilbert(mids, axis=0)
+    analytic_mid = signal.hilbert(mids, N=fast_n, axis=0)[:n_samples]
     rot_mid = np.exp(1j * (2.0 * np.pi * mid_shift_hz * t))
     if data.ndim >= 2:
         rot_mid = rot_mid[:, None]
     shifted_mid = np.real(analytic_mid * rot_mid)
 
     # Shift highs
-    analytic_top = signal.hilbert(top, axis=0)
+    analytic_top = signal.hilbert(top, N=fast_n, axis=0)[:n_samples]
     rot_top = np.exp(1j * (2.0 * np.pi * top_shift_hz * t))
     if data.ndim >= 2:
         rot_top = rot_top[:, None]
@@ -445,11 +493,12 @@ def apply_total_center_vocal_annihilation(data: np.ndarray, sr: int) -> np.ndarr
     Complete phase subtraction of the center channel (L - R, R - L) on mid and high frequencies
     where lead vocals reside, while preserving solid sub-bass (< 160 Hz) in mono.
     For mono audio, synthesizes decorrelated Haas stereo with vocal band comb-notch filtering.
+    Includes stereo cross-correlation protection against mono phase cancellation.
     """
     if data.ndim == 1 or data.shape[1] < 2:
         mono = data.squeeze() if data.ndim > 1 else data
-        sos_bass = signal.butter(2, 160.0, btype='lp', fs=sr, output='sos')
-        sos_mid = signal.butter(2, [800.0, 3600.0], btype='bandpass', fs=sr, output='sos')
+        sos_bass = _get_cached_butter_sos(2, (160.0,), 'lp', sr)
+        sos_mid = _get_cached_butter_sos(2, (800.0, 3600.0), 'bandpass', sr)
         bass = signal.sosfilt(sos_bass, mono)
         vocal_mid = signal.sosfilt(sos_mid, mono)
         non_vocal = mono - 0.92 * vocal_mid
@@ -458,8 +507,8 @@ def apply_total_center_vocal_annihilation(data: np.ndarray, sr: int) -> np.ndarr
         else:
             return non_vocal[:, np.newaxis].astype(np.float32)
 
-    sos_bass = signal.butter(2, 160.0, btype='lp', fs=sr, output='sos')
-    sos_high = signal.butter(2, 160.0, btype='hp', fs=sr, output='sos')
+    sos_bass = _get_cached_butter_sos(2, (160.0,), 'lp', sr)
+    sos_high = _get_cached_butter_sos(2, (160.0,), 'hp', sr)
 
     bass = signal.sosfilt(sos_bass, data, axis=0)
     high = signal.sosfilt(sos_high, data, axis=0)
@@ -473,6 +522,15 @@ def apply_total_center_vocal_annihilation(data: np.ndarray, sr: int) -> np.ndarr
     r_high = high[:, 1]
     side_l = l_high - r_high
     side_r = r_high - l_high
+
+    # Mono compatibility correlation safeguard
+    dot_prod = float(np.dot(side_l, side_r))
+    norm_val = float(np.linalg.norm(side_l) * np.linalg.norm(side_r) + 1e-9)
+    corr = dot_prod / norm_val
+    if corr < -0.4:
+        center_mid = 0.15 * 0.5 * (l_high + r_high)
+        side_l = side_l + center_mid
+        side_r = side_r + center_mid
 
     out = bass_out + np.column_stack([side_l, side_r])
     return out.astype(np.float32)
@@ -541,7 +599,7 @@ def apply_front_and_tail_padding(
 
     if use_ambient_intro and f_samples > 0:
         t_f = np.linspace(0, front_sec, f_samples, endpoint=False, dtype=np.float32)
-        env = np.linspace(0.05, 1.0, f_samples) ** 3
+        env = (np.linspace(0.05, 1.0, f_samples, dtype=np.float32) ** 3)
         tone = 0.02 * np.sin(2.0 * np.pi * 140.0 * t_f) * env
         hiss = np.random.normal(0, 0.003, f_samples).astype(np.float32)
         front_track = (tone + hiss).astype(np.float32)
@@ -565,12 +623,16 @@ def apply_adversarial_peak_injection(
     data: np.ndarray,
     sr: int,
     decoy_intensity: float = 1.15,
-    offset_bins: int = 4
+    offset_bins: int = 4,
+    intensity: Optional[float] = None
 ) -> np.ndarray:
     """
     Calculates STFT of the track, detects true spectral peaks, and injects decoy peaks
     with +1.0 to +1.5 dB higher amplitude to hijack constellation extractors.
+    Fully vectorized across all STFT time columns for ultra-low CPU consumption.
     """
+    if intensity is not None:
+        decoy_intensity = intensity
     nperseg = 2048
     noverlap = 1536
 
@@ -588,13 +650,12 @@ def apply_adversarial_peak_injection(
         if band_mag.size > 0:
             top_bins = min_bin + np.argmax(band_mag, axis=0)
             n_cols = Zxx.shape[1]
+            cols = np.arange(n_cols)
 
-            for col in range(n_cols):
-                peak_b = top_bins[col]
-                target_b = min(mag.shape[0] - 1, peak_b + offset_bins)
-                target_mag = mag[peak_b, col] * decoy_intensity
-                decoy_phase = phase[peak_b, col] + 0.45
-                decoy_Zxx[target_b, col] += target_mag * np.exp(1j * decoy_phase)
+            target_b = np.minimum(mag.shape[0] - 1, top_bins + offset_bins)
+            target_mag = mag[top_bins, cols] * np.float32(decoy_intensity)
+            decoy_phase = phase[top_bins, cols] + np.float32(0.45)
+            decoy_Zxx[target_b, cols] += target_mag * np.exp(1j * decoy_phase)
 
         _, rec = signal.istft(decoy_Zxx, fs=sr, nperseg=nperseg, noverlap=noverlap)
         return rec[:len(ch)]
@@ -622,15 +683,14 @@ def apply_schroeder_phase_dispersion(
     Cascades 4 second-order all-pass biquad filters.
     All-pass filters maintain 100% flat magnitude response (|H(f)| = 1.0) while
     completely randomizing phase and dispersing transient impulse peaks across time.
+    Uses pre-cached bilinear biquad filter coefficients.
     """
-    out = np.copy(data)
+    out = np.ascontiguousarray(data, dtype=np.float32)
     for f0 in center_freqs:
         if f0 >= sr / 2.0:
             continue
         w0 = 2.0 * np.pi * f0
-        b_s = [1.0, -w0 / q_factor, w0 ** 2]
-        a_s = [1.0, w0 / q_factor, w0 ** 2]
-        b_z, a_z = signal.bilinear(b_s, a_s, sr)
+        b_z, a_z = _get_cached_bilinear(w0, q_factor, sr)
         out = signal.lfilter(b_z, a_z, out, axis=0)
 
     return out.astype(np.float32)
@@ -1105,16 +1165,18 @@ def sanitize_audio(
     apply_dither: bool = True,
     vocal_stem_attenuation_db: float = -18.0,
     peak_target_db: float = -0.5,
-    trim_duration: bool = True,
+    trim_duration: bool = False,
     max_duration_seconds: float = 28.0,
     strip_metadata: bool = True,
     output_bitrate: str = "wav",
     cloud_config: Optional[CloudApiConfig] = None,
     progress_callback: Optional[Callable[[int, str], None]] = None,
+    cancel_event: Optional[threading.Event] = None,
     **kwargs
 ) -> AudioProcessResult:
     """
     Main audio sanitization function implementing the comprehensive multi-vector evasion pipeline.
+    Supports cooperative background cancellation and non-blocking progress dispatch.
     """
     logs: list[str] = []
 
@@ -1123,9 +1185,14 @@ def sanitize_audio(
         if progress_callback:
             progress_callback(pct, msg)
 
+    def check_cancelled():
+        if cancel_event and cancel_event.is_set():
+            raise InterruptedError("Audio sanitization cancelled by user.")
+
     log_msg(5, f"Reading audio stream: {os.path.basename(input_path)}")
 
     try:
+        check_cancelled()
         data, sr = load_audio_samples(input_path, target_sr=44100)
         orig_samples = data.shape[0]
         orig_duration = float(orig_samples) / float(sr)
@@ -1139,6 +1206,7 @@ def sanitize_audio(
         # Branch A: Cloud API Stem Separation Mode (Zero Local Downloads)
         # -------------------------------------------------------------
         if mode in ("cloud_api", "stem"):
+            check_cancelled()
             log_msg(18, "Executing Cloud API Stem Separation Mode (Zero Local Downloads)...")
             processed_data = apply_cloud_stem_isolation(
                 input_path=input_path,
@@ -1157,6 +1225,7 @@ def sanitize_audio(
             data_dsp = np.copy(data)
 
             # Step 1: Vocal Obliteration
+            check_cancelled()
             if mode in ("nuclear_cloak", "pure_instrumental") or enable_total_vocal_cut:
                 log_msg(22, "Applying Total Center Vocal Annihilation (Zero Lead Vocal, bass preserved <160 Hz)...")
                 data_dsp = apply_total_center_vocal_annihilation(data_dsp, sr=sr)
@@ -1173,6 +1242,7 @@ def sanitize_audio(
                 )
 
             # Step 2: Asymmetric Bode Frequency Shifter
+            check_cancelled()
             if mode == "nuclear_cloak" or enable_triple_band_bode:
                 log_msg(36, "Applying Triple-Band Asymmetric Bode Shifter (+12 Hz Mids, -16 Hz Highs to shatter chroma)...")
                 data_dsp = apply_triple_band_bode_shifter(data_dsp, sr=sr, mid_shift_hz=12.0, top_shift_hz=-16.0)
@@ -1181,31 +1251,37 @@ def sanitize_audio(
                 data_dsp = apply_bode_frequency_shifter(data_dsp, sr=sr, shift_hz=bode_shift_hz, wet=0.85)
 
             # Step 3: Dynamic Micro-Chrono Jitter
+            check_cancelled()
             if enable_micro_chrono_jitter and jitter_intensity_ms > 0.0:
                 log_msg(48, f"Applying Dynamic Micro-Chrono Jitter (+/-{jitter_intensity_ms:.1f} ms time-warping to flatten offset histogram)...")
                 data_dsp = apply_micro_chrono_jitter(data_dsp, sr=sr, max_jitter_ms=jitter_intensity_ms)
 
             # Step 4: Adversarial Pseudo-Peak Injection
+            check_cancelled()
             if enable_adversarial_peaks:
                 log_msg(58, f"Injecting Adversarial Pseudo-Peaks (x{decoy_peak_intensity:.2f} decoy magnitude in STFT plane)...")
                 data_dsp = apply_adversarial_peak_injection(data_dsp, sr=sr, decoy_intensity=decoy_peak_intensity)
 
             # Step 5: Schroeder All-Pass Phase Dispersion
+            check_cancelled()
             if enable_phase_dispersion:
                 log_msg(66, "Applying Schroeder All-Pass Phase Dispersion (4 cascaded biquads, 100% flat magnitude)...")
                 data_dsp = apply_schroeder_phase_dispersion(data_dsp, sr=sr)
 
             # Step 6: Full-Track Camouflage Harmonic Drone Bed
+            check_cancelled()
             if mode == "nuclear_cloak" or enable_continuous_bed:
                 log_msg(74, "Injecting Full-Track Camouflage Harmonic Drone Bed & Vinyl Texture (-26 dBFS decoy layer)...")
                 data_dsp = apply_continuous_camouflage_bed(data_dsp, sr=sr, drone_volume=drone_bed_volume)
 
             # Step 7: Virtual Physical Room & Speaker Re-Amping
+            check_cancelled()
             if enable_reamping_room and reamping_wet_mix > 0.0:
                 log_msg(80, f"Applying Virtual Acoustic Re-Amping & Room Simulation ({reamping_wet_mix*100:.0f}% wet room reflections)...")
                 data_dsp = apply_virtual_acoustic_reamping(data_dsp, sr=sr, wet_mix=reamping_wet_mix)
 
             # Step 8: Continuous Pitch Wobble & Rubberband Shift
+            check_cancelled()
             if mode == "nuclear_cloak" or enable_pitch_wobble:
                 log_msg(86, f"Applying Continuous Pitch Wobble (LFO f={pitch_wobble_freq:.2f} Hz, base={pitch_shift_semitones:+.1f} st, formant shifted)...")
                 data_dsp = apply_continuous_pitch_wobble(
@@ -1225,6 +1301,7 @@ def sanitize_audio(
         # -------------------------------------------------------------
         # Step 9: Front & Tail Padding (The Suno Padding Hack)
         # -------------------------------------------------------------
+        check_cancelled()
         if front_padding_seconds > 0.0 or tail_padding_seconds > 0.0:
             log_msg(90, f"Applying Acoustic Padding (+{front_padding_seconds:.1f}s front ambient pad, +{tail_padding_seconds:.1f}s tail)...")
             processed_data = apply_front_and_tail_padding(
@@ -1238,6 +1315,7 @@ def sanitize_audio(
         # -------------------------------------------------------------
         # Step 10: Ultrasonic / Sub-bass Strip & Shaped Dither
         # -------------------------------------------------------------
+        check_cancelled()
         if apply_eq_filters or apply_dither:
             log_msg(92, "Applying 25 Hz HP / 18.5 kHz LP filter and shaped dither to strip watermarks...")
             processed_data = apply_eq_and_dither(processed_data, sr=sr, apply_filters=apply_eq_filters, apply_dither=apply_dither)
@@ -1245,6 +1323,7 @@ def sanitize_audio(
         # -------------------------------------------------------------
         # Step 11: Optimal Safe Duration Trimming (The 20-28s Sweet Spot)
         # -------------------------------------------------------------
+        check_cancelled()
         if trim_duration and max_duration_seconds > 0:
             max_samples = int(max_duration_seconds * sr)
             if processed_data.shape[0] > max_samples:
@@ -1254,6 +1333,7 @@ def sanitize_audio(
         # -------------------------------------------------------------
         # Step 12: Peak Normalization
         # -------------------------------------------------------------
+        check_cancelled()
         log_msg(96, f"Normalizing peak amplitude to {peak_target_db:.1f} dBFS...")
         target_peak_linear = 10.0 ** (peak_target_db / 20.0)
         curr_peak = np.max(np.abs(processed_data))
@@ -1263,6 +1343,7 @@ def sanitize_audio(
         # -------------------------------------------------------------
         # Step 13: Clean Container Export (WAV / MP3)
         # -------------------------------------------------------------
+        check_cancelled()
         log_msg(97, f"Writing clean bit-exact container ({os.path.basename(output_path)}) without metadata tags...")
         export_clean_audio(
             data=processed_data,
@@ -1294,6 +1375,18 @@ def sanitize_audio(
             evasion_verdict=verdict
         )
 
+    except InterruptedError as ex:
+        err_msg = str(ex)
+        log_msg(100, err_msg)
+        return AudioProcessResult(
+            input_path=input_path,
+            output_path=output_path,
+            original_duration=0.0,
+            final_duration=0.0,
+            logs=logs,
+            success=False,
+            error_message=err_msg
+        )
     except Exception as ex:
         err_msg = f"Audio sanitization failed: {str(ex)}"
         log_msg(100, err_msg)
@@ -1331,8 +1424,20 @@ class AudioProcessor:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
 
-        file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+        file_size = os.path.getsize(file_path)
+        file_size_mb = file_size / (1024 * 1024)
         ext = Path(file_path).suffix.lstrip(".").lower()
+
+        if file_size == 0:
+            return AudioInfo(
+                file_path=file_path,
+                duration_seconds=0.0,
+                duration_formatted="00:00",
+                sample_rate=44100,
+                channels=2,
+                file_size_mb=0.0,
+                format_name=ext.upper() or "EMPTY"
+            )
 
         try:
             info = sf.info(file_path)
@@ -1405,7 +1510,8 @@ class AudioProcessor:
         input_path: str,
         output_path: str,
         options: AudioSanitizeOptions,
-        progress_callback: Optional[Callable[[int, str], None]] = None
+        progress_callback: Optional[Callable[[int, str], None]] = None,
+        cancel_event: Optional[threading.Event] = None
     ) -> AudioProcessResult:
         """Processes audio using the configured mode and options."""
         mode = getattr(options, 'mode', 'nuclear_cloak')
@@ -1460,5 +1566,6 @@ class AudioProcessor:
             strip_metadata=options.strip_metadata,
             output_bitrate=options.output_bitrate,
             cloud_config=cloud_cfg,
-            progress_callback=progress_callback
+            progress_callback=progress_callback,
+            cancel_event=cancel_event
         )

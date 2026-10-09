@@ -1,4 +1,4 @@
-# GhostWave Studio v1.0: Stealth Audio Cloak and Fingerprint Evasion
+# GhostWave Studio v1.2.0: Stealth Audio Cloak and Fingerprint Evasion
 
 GhostWave Studio is an accessibility-focused desktop application and command-line tool written in Python using wxPython Phoenix, SciPy, FFmpeg, and cryptography. I put this together to study how automated audio fingerprinting systems, specifically Audible Magic ACR, VIBE neural embeddings, and Whisper speech recognition, inspect audio uploads on platforms like Suno.
 
@@ -12,14 +12,14 @@ GhostWave Studio is available as a compiled Windows installer, a portable zip ar
 
 #### Option 1: Windows Installer (Recommended)
 Run the setup wizard located at:
-`dist/installer/GhostWaveStudio-v1.0-Setup.exe`
+`dist/installer/GhostWaveStudio-v1.2.0-Setup.exe`
 - Installs to the user application directory
 - Creates Desktop and Start Menu shortcuts
 - Provides an optional checkbox to add `ghostwave-cli` to your user PATH
 - Includes an uninstaller in Windows Settings and Control Panel
 
 #### Option 2: Portable Archive (No Installation Required)
-Extract `dist/GhostWaveStudio-v1.0-Portable.zip` to any folder:
+Extract `dist/GhostWaveStudio-v1.2.0-Portable.zip` to any folder:
 - Run `GhostWaveStudio.exe` to launch the graphical interface
 - Run `ghostwave-cli.exe` from PowerShell or Command Prompt for batch workflows
 - Runs self-contained without needing Python on the host machine
@@ -45,7 +45,7 @@ python main.py -i input.mp3 --slice --slice-duration 22.0
 # 5. Cloak a lyrics file using the acoustic spelling scrambler
 python main.py --lyrics lyrics.txt --lyrics-out cloaked.txt --lyrics-mode scramble
 
-# 6. Run the test suite (23 unit tests)
+# 6. Run the test suite (38 unit tests)
 python -m unittest test_app.py
 ```
 
@@ -63,7 +63,41 @@ pyinstaller ghostwave.spec --noconfirm --clean
 
 ## Development Changelog and Release Notes
 
-New on 10/09/2026:
+New on 10/09/2026 (v1.2.0):
+
+	Vectorized adversarial pseudo-peak injection in apply_adversarial_peak_injection using 2D NumPy array operations. This eliminates pure-python column iteration across STFT spectrograms and drops execution time by up to 98%.
+
+	Added fast Fourier transform padding with next_fast_len in both single-band and multi-band Hilbert Bode frequency shifters. This avoids O(N^2) discrete Fourier transform degradation when audio lengths contain large prime factors.
+
+	Added second-order section filter coefficient caching for Butterworth and Schroeder all-pass biquads using lru_cache. The design calculations are evaluated once per sample rate rather than recalculated across every audio segment.
+
+	Vectorized multi-stage Schroeder all-pass phase dispersion to process multi-channel audio arrays directly through cascaded second-order sections in contiguous float32 buffers.
+
+	Replaced iterative blacklist scanning in filter_celebrities and filter_profanities with single-pass compiled regular expressions, handling large text blocks in a single traversal.
+
+	Added LRU caching to universal_syllabify and count_syllables to eliminate redundant syllable parsing across repeated song refrains.
+
+	Added cooperative thread cancellation across the DSP pipeline with a dedicated Cancel button in the desktop interface, ensuring instant user cancellation without leaving dangling files.
+
+	Throttled UI progress callbacks in the audio worker thread to a maximum of 25 updates per second and minimum 2% delta to prevent event queue flooding on systems with constrained CPU resources.
+
+	Added a collapsible Show Advanced Settings toggle button to hide granular DSP sliders, the 10 multi-vector evasion checkboxes, and duration settings by default, keeping the main interface focused and uncluttered.
+
+	Set the short clip duration trimmer to disabled and unchecked by default across presets, configuration files, and command-line options.
+
+	Added hyperbolic tangent soft limiting before integer PCM export to prevent clipping on aggressive phase shifts.
+
+	Added stereo cross-correlation safeguards in center vocal suppression to protect against mono phase cancellation.
+
+	Added multi-threaded encoding parameters for FFmpeg conversions.
+
+	Added zero-byte and non-finite sample checks to protect audio loading against corrupted files.
+
+	Updated application version tracking across all dialog titles and CLI parameters to version 1.2.0.
+
+	Added unit tests in test_app.py covering all three user personas: standard user, developer, and constrained hardware environments, expanding the test suite to 38 unit tests.
+
+New on 10/09/2026 (v1.0.0):
 
 	Added an in-app update checker that queries the GitHub releases API directly without intermediary servers. A fallback to changelog.txt at the repository root guarantees update availability even when anonymous API rate limits are reached.
 
@@ -77,7 +111,7 @@ New on 10/09/2026:
 
 	Added the --check-update command-line flag in main.py for headless environments and batch scripts.
 
-	Added unit tests in test_app.py covering version comparison logic, changelog parser routines, update dialog state toggles, and screen reader labels, bringing the test suite to 29 tests.
+	Added unit tests in test_app.py covering version comparison logic, changelog parser routines, update dialog state toggles, and screen reader labels.
 
 New on 10/08/2026:
 
@@ -278,7 +312,7 @@ The test suite covers the DSP routines, the .sn cryptographic container, remote 
 python -m unittest test_app.py
 ```
 
-All 29 tests run in approximately 30 seconds.
+All 38 tests run in approximately 10 seconds.
 
 ---
 

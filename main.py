@@ -1,5 +1,5 @@
 """
-Main Application Entry Point for GhostWave Studio v1.0.
+Main Application Entry Point for GhostWave Studio.
 
 Supports both Accessible Desktop GUI (wxPython) and Command-Line Interface (CLI)
 for automated batch audio cloaking, ABS slicing, and Chromaprint acoustic evasion audits.
@@ -14,11 +14,12 @@ import sys
 
 from audio_processor import AudioProcessor, AudioSanitizeOptions, benchmark_evasion_metrics
 from config_manager import GhostWaveConfig, DEFAULT_SN_FILENAME
+from updater import APP_VERSION
 
 
 def print_banner():
     print("=" * 64)
-    print("GhostWave Studio v1.0 - Next-Gen Stealth Audio Cloaking Engine")
+    print(f"GhostWave Studio v{APP_VERSION} - Next-Gen Stealth Audio Cloaking Engine")
     print("Encrypted Vault (.sn) Active | Multi-Vector Acoustic Evasion")
     print("=" * 64)
 
@@ -82,7 +83,7 @@ def run_cli(args: argparse.Namespace) -> int:
         enable_vocal_cut=not args.no_vocal_cut,
         enable_formant_scrambler=not args.no_vocal_cut,
         inject_preamble=not args.no_preamble,
-        trim_duration=not args.no_trim,
+        trim_duration=bool(args.trim and not args.no_trim),
         max_duration_seconds=args.duration,
         strip_metadata=True,
         output_bitrate="320k" if args.format == "mp3" else "wav",
@@ -173,7 +174,7 @@ def run_lyrics_cli(args: argparse.Namespace) -> int:
 
 
 def run_gui():
-    """Initializes wx application loop and displays GhostWave Studio v1.0."""
+    """Initializes wx application loop and displays GhostWave Studio."""
     import wx
     from gui import GhostWaveFrame
 
@@ -185,9 +186,10 @@ def run_gui():
 
 def main():
     parser = argparse.ArgumentParser(
-        description="GhostWave Studio v1.0 - Next-Gen Stealth Audio Cloaking Engine & Acoustic Shield",
+        description=f"GhostWave Studio v{APP_VERSION} - Next-Gen Stealth Audio Cloaking Engine & Acoustic Shield",
         add_help=True
     )
+    parser.add_argument("-v", "--version", action="version", version=f"GhostWave Studio v{APP_VERSION}")
     parser.add_argument("-i", "--input", help="Source audio file to cloak and sanitize")
     parser.add_argument("-o", "--output", help="Destination audio file path")
     parser.add_argument("--format", choices=["mp3", "wav"], default="wav", help="Output container format (default: wav)")
@@ -204,7 +206,8 @@ def main():
     parser.add_argument("--no-room", action="store_true", help="Disable virtual acoustic re-amping")
     parser.add_argument("--no-vocal-cut", action="store_true", help="Disable vocal suppression")
     parser.add_argument("--no-preamble", action="store_true", help="Disable front-end preamble injection")
-    parser.add_argument("--no-trim", action="store_true", help="Disable duration trimming")
+    parser.add_argument("--trim", action="store_true", help="Trim audio to safe duration for Suno clips (disabled by default)")
+    parser.add_argument("--no-trim", action="store_true", help="Explicitly disable duration trimming")
     parser.add_argument("--audit-only", action="store_true", help="Only run Chromaprint audit on existing files")
     parser.add_argument("--slice", action="store_true", help="Slice audio into ABS safe chunks for Suno Library upload")
     parser.add_argument("--slice-duration", type=float, default=22.0, help="Chunk duration in seconds for --slice (default: 22.0)")
@@ -218,7 +221,7 @@ def main():
     args = parser.parse_args()
 
     if args.check_update:
-        from updater import check_for_updates, APP_VERSION
+        from updater import check_for_updates
         print(f"Checking GitHub for updates (current version: {APP_VERSION})...")
         info = check_for_updates()
         if info.has_update:

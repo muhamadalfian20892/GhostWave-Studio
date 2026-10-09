@@ -1,8 +1,8 @@
-; Inno Setup Script for GhostWave Studio v1.0
+; Inno Setup Script for GhostWave Studio v1.2.0
 ; Build standalone Windows installer package
 
 #define MyAppName "GhostWave Studio"
-#define MyAppVersion "1.0"
+#define MyAppVersion "1.2.0"
 #define MyAppPublisher "Technokers Lab"
 #define MyAppURL "https://github.com/muhamadalfian20892/GhostWave-Studio"
 #define MyAppExeName "GhostWaveStudio.exe"
@@ -21,7 +21,7 @@ DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 LicenseFile=LICENSE
 OutputDir=dist\installer
-OutputBaseFilename=GhostWaveStudio-v1.0-Setup
+OutputBaseFilename=GhostWaveStudio-v1.2.0-Setup
 SetupIconFile=ghostwave.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
