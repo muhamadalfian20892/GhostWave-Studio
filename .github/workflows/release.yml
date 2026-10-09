@@ -49,7 +49,7 @@ jobs:
       - name: Create Portable Zip Package
         run: |
           Copy-Item "README.md", "CONTRIBUTING.md", "LICENSE", "changelog.txt" -Destination "dist\GhostWaveStudio\"
-          Compress-Archive -Path "dist\GhostWaveStudio\*" -DestinationPath "dist\installer\GhostWaveStudio-v1.0-Portable.zip" -Force
+          Compress-Archive -Path "dist\GhostWaveStudio\*" -DestinationPath "dist\installer\GhostWaveStudio-${{ github.ref_name }}-Portable.zip" -Force
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
@@ -58,9 +58,9 @@ jobs:
           name: GhostWave Studio ${{ github.ref_name }}
           draft: false
           prerelease: false
-          generate_release_notes: true
+          body_path: changelog.txt
           files: |
-            dist/installer/GhostWaveStudio-v1.0-Setup.exe
-            dist/installer/GhostWaveStudio-v1.0-Portable.zip
+            dist/installer/*.exe
+            dist/installer/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
