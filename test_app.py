@@ -650,15 +650,15 @@ class TestVersion120UpgradesAndPersonas(unittest.TestCase):
         self.assertIn("bin-tang", lines[1])
 
     def test_changelog_has_no_download_urls(self):
-        """Verifies changelog.txt contains strictly zero download URLs."""
+        """Verifies changelog.txt contains strictly zero direct installer/portable download links."""
         changelog_path = os.path.join(os.path.dirname(__file__), "changelog.txt")
         self.assertTrue(os.path.exists(changelog_path))
         with open(changelog_path, "r", encoding="utf-8") as f:
             content = f.read()
-        self.assertNotIn("http://", content)
-        self.assertNotIn("https://", content)
         self.assertNotIn("Installer:", content)
         self.assertNotIn("Portable:", content)
+        self.assertNotIn(".exe", content)
+        self.assertNotIn(".zip", content)
 
     def test_readme_txt_pure_plain_text(self):
         """Verifies README.txt contains zero markdown syntax, backticks, em dashes, or emojis."""
@@ -674,6 +674,78 @@ class TestVersion120UpgradesAndPersonas(unittest.TestCase):
         self.assertNotIn("—", content)
         non_ascii = [ch for ch in content if ord(ch) > 127]
         self.assertEqual(len(non_ascii), 0, f"Found non-ASCII characters: {set(non_ascii)}")
+        self.assertIn("http://technokerslab.blogspot.com/", content)
+        self.assertIn("hafiyanajah@gmail.com", content)
+        self.assertIn("https://github.com/muhamadalfian20892/GhostWave-Studio", content)
+
+    def test_readme_id_txt_pure_plain_text(self):
+        """Verifies README_ID.txt contains zero markdown syntax, backticks, em dashes, or emojis."""
+        readme_path = os.path.join(os.path.dirname(__file__), "README_ID.txt")
+        self.assertTrue(os.path.exists(readme_path))
+        with open(readme_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        self.assertGreater(len(content), 100)
+        self.assertNotIn("```", content)
+        self.assertNotIn("`", content)
+        self.assertNotIn("##", content)
+        self.assertNotIn("**", content)
+        self.assertNotIn("—", content)
+        non_ascii = [ch for ch in content if ord(ch) > 127]
+        self.assertEqual(len(non_ascii), 0, f"Found non-ASCII characters: {set(non_ascii)}")
+        self.assertIn("http://technokerslab.blogspot.com/", content)
+        self.assertIn("hafiyanajah@gmail.com", content)
+        self.assertIn("https://github.com/muhamadalfian20892/GhostWave-Studio", content)
+
+    def test_i18n_catalogs_and_switching(self):
+        """Verifies language catalogs, fallback behavior, and key parity between en and id."""
+        from i18n import init_translations, set_language, get_language, tr, _load_catalog
+        en_cat = _load_catalog("en")
+        id_cat = _load_catalog("id")
+        self.assertGreater(len(en_cat), 20)
+        self.assertGreater(len(id_cat), 20)
+        # Verify key parity
+        missing_in_id = set(en_cat.keys()) - set(id_cat.keys())
+        self.assertEqual(len(missing_in_id), 0, f"Keys missing in id.json: {missing_in_id}")
+
+        init_translations("en")
+        self.assertEqual(get_language(), "en")
+        self.assertEqual(tr("MENU_FILE"), "&File")
+
+        set_language("id")
+        self.assertEqual(get_language(), "id")
+        self.assertEqual(tr("MENU_FILE"), "&Berkas")
+        # Test variable formatting
+        stat_msg = tr("LYRICS_STATS_FORMAT", chars=10, words=2, lines=1)
+        self.assertIn("10", stat_msg)
+        self.assertIn("Karakter:", stat_msg)
+
+        # Reset back to en
+        set_language("en")
+
+    def test_support_client_diagnostics(self):
+        """Verifies ticket key generation and system diagnostics collection."""
+        from support_client import generate_ticket_key, get_system_diagnostics
+        key1 = generate_ticket_key()
+        key2 = generate_ticket_key()
+        self.assertEqual(len(key1), 32)
+        self.assertNotEqual(key1, key2)
+
+        diag = get_system_diagnostics("1.4.0")
+        self.assertIn("OS:", diag)
+        self.assertIn("App Version: 1.4.0", diag)
+
+    def test_config_manager_v1_4_0(self):
+        """Verifies v1.4.0 configuration fields and ticket persistence."""
+        from config_manager import GhostWaveConfig
+        cfg = GhostWaveConfig()
+        self.assertEqual(cfg.app_version, "1.4.0")
+        self.assertEqual(cfg.language, "en")
+        self.assertTrue(cfg.first_run)
+        self.assertEqual(len(cfg.user_tickets), 0)
+
+        cfg.add_user_ticket({"ticket_id": 42, "title": "Test Ticket", "status": "open"})
+        self.assertEqual(len(cfg.user_tickets), 1)
+        self.assertEqual(cfg.user_tickets[0]["ticket_id"], 42)
 
     def test_accessibility_guide_and_about_dialogs_structure(self):
         """Verifies AccessibilityGuideDialog and AboutDialog are structured with read-only text and close buttons."""
@@ -685,6 +757,8 @@ class TestVersion120UpgradesAndPersonas(unittest.TestCase):
 
         dlg = AccessibilityGuideDialog()
         self.assertIn("GhostWave Studio", dlg.text_ctrl.GetValue())
+        self.assertIn("http://technokerslab.blogspot.com/", dlg.text_ctrl.GetValue())
+        self.assertIn("https://github.com/muhamadalfian20892/GhostWave-Studio", dlg.text_ctrl.GetValue())
         self.assertTrue(dlg.text_ctrl.IsEditable() is False)
         self.assertIsNotNone(dlg.close_btn)
         self.assertIsNotNone(dlg.copy_btn)
@@ -692,6 +766,8 @@ class TestVersion120UpgradesAndPersonas(unittest.TestCase):
 
         about_dlg = AboutDialog()
         self.assertIn("GhostWave Studio", about_dlg.text_ctrl.GetValue())
+        self.assertIn("http://technokerslab.blogspot.com/", about_dlg.text_ctrl.GetValue())
+        self.assertIn("https://github.com/muhamadalfian20892/GhostWave-Studio", about_dlg.text_ctrl.GetValue())
         self.assertTrue(about_dlg.text_ctrl.IsEditable() is False)
         self.assertIsNotNone(about_dlg.close_btn)
         about_dlg.Destroy()

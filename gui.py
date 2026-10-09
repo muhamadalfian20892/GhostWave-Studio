@@ -40,6 +40,8 @@ from updater import (
     check_updates_background,
     run_update_flow
 )
+from i18n import tr, _t, get_language, set_language, get_supported_languages
+import support_client
 
 
 class BlacklistDialog(wx.Dialog):
@@ -495,6 +497,7 @@ class SunoCheatSheetDialog(wx.Dialog):
         protocol_lines = [
             "==================================================================",
             "SUNO AI ANTI-BLOCK UPLOAD PROTOCOL (STUDY & RESEARCH REFERENCE)",
+            "Original Website: http://technokerslab.blogspot.com/",
             "==================================================================",
             "",
             "1. ALWAYS EXPORT AS LOSSLESS 16-BIT PCM WAV (NOT MP3):",
@@ -537,6 +540,10 @@ class SunoCheatSheetDialog(wx.Dialog):
             "   • The 'Continuous Camouflage Bed' injects an analog fifths drone at -26 dBFS",
             "     which populates the STFT spectrogram with thousands of decoy energy peaks,",
             "     preventing Audible Magic's peak pickers from indexing original audio.",
+            "==================================================================",
+            "Open Source Notice:",
+            "GhostWave Studio is open source software. To contribute or inspect source code,",
+            "visit: https://github.com/muhamadalfian20892/GhostWave-Studio",
             "=================================================================="
         ]
         cheat_ctrl.SetValue("\n".join(protocol_lines))
@@ -774,6 +781,439 @@ class AudioFileDropTarget(wx.FileDropTarget):
             return False
 
 
+class LanguageSelectionDialog(wx.Dialog):
+    """
+    Accessible dialog prompting users to choose their preferred interface language.
+    Shown automatically on first startup and accessible from Settings or Language menu.
+    """
+
+    def __init__(self, parent: Optional[wx.Window] = None, current_lang: str = "en"):
+        super().__init__(
+            parent,
+            title=tr("LANG_SELECT_TITLE"),
+            style=wx.DEFAULT_DIALOG_STYLE,
+            size=(460, 270)
+        )
+        self.SetName("Language Selection Dialog")
+        self.current_lang = current_lang
+
+        panel = wx.Panel(self, style=wx.TAB_TRAVERSAL)
+        panel.SetName("Language Selection Panel")
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        prompt_label = wx.StaticText(
+            panel,
+            label=tr("LANG_SELECT_PROMPT")
+        )
+        prompt_label.SetName("Language Prompt Label")
+        main_sizer.Add(prompt_label, 0, wx.ALL, 12)
+
+        languages = [("en", "English"), ("id", "Bahasa Indonesia")]
+        choices = [f"{name} ({code.upper()})" for code, name in languages]
+        self.lang_codes = [code for code, _ in languages]
+
+        initial_sel = 0
+        if current_lang in self.lang_codes:
+            initial_sel = self.lang_codes.index(current_lang)
+
+        self.radio_box = wx.RadioBox(
+            panel,
+            label=tr("MENU_LANGUAGE"),
+            choices=choices,
+            majorDimension=1,
+            style=wx.RA_SPECIFY_COLS,
+            name="Language Selection Radio Group"
+        )
+        self.radio_box.SetSelection(initial_sel)
+        main_sizer.Add(self.radio_box, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
+
+        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        btn_sizer.AddStretchSpacer()
+
+        self.save_btn = wx.Button(
+            panel,
+            wx.ID_OK,
+            label=tr("LANG_SELECT_BTN"),
+            name="Save Language Selection Button"
+        )
+        self.save_btn.SetDefault()
+        btn_sizer.Add(self.save_btn, 0, wx.RIGHT, 6)
+
+        main_sizer.Add(btn_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
+        panel.SetSizer(main_sizer)
+
+        dialog_sizer = wx.BoxSizer(wx.VERTICAL)
+        dialog_sizer.Add(panel, 1, wx.EXPAND)
+        self.SetSizer(dialog_sizer)
+        self.CentreOnParent()
+
+        self.Bind(wx.EVT_CHAR_HOOK, self.on_key_hook)
+
+    def on_key_hook(self, event: wx.KeyEvent):
+        if event.GetKeyCode() == wx.WXK_ESCAPE:
+            self.EndModal(wx.ID_CANCEL)
+        else:
+            event.Skip()
+
+    def get_selected_language(self) -> str:
+        idx = self.radio_box.GetSelection()
+        if 0 <= idx < len(self.lang_codes):
+            return self.lang_codes[idx]
+        return "en"
+
+
+class SupportTicketDialog(wx.Dialog):
+    """
+    Accessible Support Center Dialog for GhostWave Studio v1.4.0.
+    Enables users to submit support tickets, report bugs, request features,
+    and review ticket discussion threads directly within the application.
+    """
+
+    def __init__(self, parent: Optional[wx.Window] = None):
+        super().__init__(
+            parent,
+            title=f"{tr('TICKET_DIALOG_TITLE')} - GhostWave Studio v{APP_VERSION}",
+            style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
+            size=(720, 620)
+        )
+        self.SetName("Support Center Dialog")
+        self.config = GhostWaveConfig.load()
+        self.active_ticket: Optional[dict] = None
+
+        panel = wx.Panel(self, style=wx.TAB_TRAVERSAL)
+        panel.SetName("Support Center Panel")
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        self.notebook = wx.Notebook(panel, style=wx.NB_TOP | wx.TAB_TRAVERSAL)
+        self.notebook.SetName("Support Center Tabs")
+
+        # Tab 1: Submit New Ticket
+        self.new_ticket_page = wx.Panel(self.notebook, style=wx.TAB_TRAVERSAL)
+        self._build_new_ticket_tab(self.new_ticket_page)
+        self.notebook.AddPage(self.new_ticket_page, tr("TICKET_TAB_NEW"), select=True)
+
+        # Tab 2: My Tickets & Discussion Thread
+        self.my_tickets_page = wx.Panel(self.notebook, style=wx.TAB_TRAVERSAL)
+        self._build_my_tickets_tab(self.my_tickets_page)
+        self.notebook.AddPage(self.my_tickets_page, tr("TICKET_TAB_LIST"), select=False)
+
+        main_sizer.Add(self.notebook, 1, wx.EXPAND | wx.ALL, 10)
+
+        # Bottom Close Button
+        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        btn_sizer.AddStretchSpacer()
+        self.close_btn = wx.Button(
+            panel,
+            wx.ID_CANCEL,
+            label=tr("TICKET_CLOSE_BTN"),
+            name="Close Support Dialog Button"
+        )
+        btn_sizer.Add(self.close_btn, 0)
+        main_sizer.Add(btn_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
+        panel.SetSizer(main_sizer)
+        dlg_sizer = wx.BoxSizer(wx.VERTICAL)
+        dlg_sizer.Add(panel, 1, wx.EXPAND)
+        self.SetSizer(dlg_sizer)
+        self.CentreOnParent()
+
+        self.Bind(wx.EVT_CHAR_HOOK, self.on_key_hook)
+        self.notebook.Bind(wx.EVT_NOTEBOOK_PAGE_CHANGED, self.on_page_changed)
+
+    def on_key_hook(self, event: wx.KeyEvent):
+        if event.GetKeyCode() == wx.WXK_ESCAPE:
+            self.EndModal(wx.ID_CANCEL)
+        else:
+            event.Skip()
+
+    def on_page_changed(self, event: wx.BookCtrlEvent):
+        if event.GetSelection() == 1:
+            self._populate_ticket_list()
+        event.Skip()
+
+    def _build_new_ticket_tab(self, page: wx.Panel):
+        sizer = wx.BoxSizer(wx.VERTICAL)
+
+        # Category Row
+        cat_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        cat_lbl = wx.StaticText(page, label=tr("TICKET_CATEGORY_LABEL"))
+        cat_lbl.SetName("Ticket Category Label")
+        cat_sizer.Add(cat_lbl, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+
+        self.category_choice = wx.Choice(
+            page,
+            choices=[
+                tr("TICKET_CAT_BUG"),
+                tr("TICKET_CAT_FEATURE"),
+                tr("TICKET_CAT_SUPPORT"),
+                tr("TICKET_CAT_OTHER")
+            ],
+            name="Ticket Category Selection"
+        )
+        self.category_choice.SetSelection(0)
+        self.category_choice.SetToolTip("Select the category that best describes your inquiry.")
+        cat_sizer.Add(self.category_choice, 1, wx.EXPAND)
+        sizer.Add(cat_sizer, 0, wx.EXPAND | wx.ALL, 8)
+
+        # Title Row
+        title_lbl = wx.StaticText(page, label=tr("TICKET_TITLE_LABEL"))
+        title_lbl.SetName("Ticket Title Label")
+        sizer.Add(title_lbl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
+
+        self.title_ctrl = wx.TextCtrl(page, name="Ticket Title Input")
+        self.title_ctrl.SetToolTip("Short summary of the issue or request.")
+        sizer.Add(self.title_ctrl, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+
+        # Description Row
+        desc_lbl = wx.StaticText(page, label=tr("TICKET_DESC_LABEL"))
+        desc_lbl.SetName("Ticket Description Label")
+        sizer.Add(desc_lbl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
+
+        self.desc_ctrl = wx.TextCtrl(page, style=wx.TE_MULTILINE, name="Ticket Description Input")
+        self.desc_ctrl.SetToolTip("Provide detailed steps to reproduce the problem or explain your inquiry.")
+        sizer.Add(self.desc_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+
+        # Attach Diagnostics Checkbox
+        self.sysinfo_chk = wx.CheckBox(
+            page,
+            label=tr("TICKET_ATTACH_SYSINFO"),
+            name="Attach System Diagnostics Checkbox"
+        )
+        self.sysinfo_chk.SetValue(True)
+        sizer.Add(self.sysinfo_chk, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+
+        # Status Label
+        self.submit_status_lbl = wx.StaticText(page, label="", name="Submit Status Label")
+        sizer.Add(self.submit_status_lbl, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+
+        # Submit Button
+        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        btn_sizer.AddStretchSpacer()
+        self.submit_btn = wx.Button(page, label=tr("TICKET_SUBMIT_BTN"), name="Submit Ticket Button")
+        self.submit_btn.SetDefault()
+        self.submit_btn.Bind(wx.EVT_BUTTON, self.on_submit_ticket)
+        btn_sizer.Add(self.submit_btn, 0)
+        sizer.Add(btn_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+
+        page.SetSizer(sizer)
+
+    def _build_my_tickets_tab(self, page: wx.Panel):
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        split_sizer = wx.BoxSizer(wx.HORIZONTAL)
+
+        # Left Column: Ticket List
+        left_sizer = wx.BoxSizer(wx.VERTICAL)
+        list_lbl = wx.StaticText(page, label=tr("TICKET_TAB_LIST"))
+        left_sizer.Add(list_lbl, 0, wx.BOTTOM, 4)
+
+        self.ticket_listbox = wx.ListBox(page, style=wx.LB_SINGLE, name="User Tickets List")
+        self.ticket_listbox.Bind(wx.EVT_LISTBOX, self.on_ticket_selected)
+        left_sizer.Add(self.ticket_listbox, 1, wx.EXPAND)
+
+        refresh_btn = wx.Button(page, label=tr("TICKET_REFRESH_BTN"), name="Refresh Ticket List Button")
+        refresh_btn.Bind(wx.EVT_BUTTON, lambda e: self._refresh_ticket_thread())
+        left_sizer.Add(refresh_btn, 0, wx.TOP | wx.EXPAND, 6)
+
+        split_sizer.Add(left_sizer, 1, wx.EXPAND | wx.RIGHT, 10)
+
+        # Right Column: Conversation Thread & Reply
+        right_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        self.ticket_status_lbl = wx.StaticText(page, label=tr("TICKET_SELECT_PROMPT"), name="Ticket Status Header")
+        right_sizer.Add(self.ticket_status_lbl, 0, wx.BOTTOM, 4)
+
+        self.thread_ctrl = wx.TextCtrl(
+            page,
+            style=wx.TE_MULTILINE | wx.TE_READONLY,
+            name="Ticket Discussion Thread Text"
+        )
+        right_sizer.Add(self.thread_ctrl, 1, wx.EXPAND | wx.BOTTOM, 6)
+
+        reply_lbl = wx.StaticText(page, label=tr("TICKET_REPLY_LABEL"))
+        right_sizer.Add(reply_lbl, 0, wx.BOTTOM, 2)
+
+        reply_box = wx.BoxSizer(wx.HORIZONTAL)
+        self.reply_ctrl = wx.TextCtrl(page, name="Ticket Reply Input Box")
+        reply_box.Add(self.reply_ctrl, 1, wx.EXPAND | wx.RIGHT, 6)
+
+        self.reply_btn = wx.Button(page, label=tr("TICKET_REPLY_BTN"), name="Send Reply Button")
+        self.reply_btn.Bind(wx.EVT_BUTTON, self.on_send_reply)
+        reply_box.Add(self.reply_btn, 0)
+        right_sizer.Add(reply_box, 0, wx.EXPAND)
+
+        split_sizer.Add(right_sizer, 2, wx.EXPAND)
+        sizer.Add(split_sizer, 1, wx.EXPAND | wx.ALL, 8)
+        page.SetSizer(sizer)
+
+        self._populate_ticket_list()
+
+    def _populate_ticket_list(self):
+        self.ticket_listbox.Clear()
+        tickets = getattr(self.config, "user_tickets", []) or []
+        for t in tickets:
+            t_id = t.get("ticket_id", "?")
+            t_title = t.get("title", "Untitled")
+            t_status = t.get("status", "open").upper()
+            self.ticket_listbox.Append(f"#{t_id} [{t_status}] {t_title}", t)
+        if tickets:
+            self.ticket_listbox.SetSelection(0)
+            self._display_selected_ticket()
+        else:
+            self.ticket_status_lbl.SetLabel(tr("TICKET_NO_TICKETS"))
+            self.thread_ctrl.SetValue("")
+
+    def on_ticket_selected(self, event: wx.CommandEvent):
+        self._display_selected_ticket()
+
+    def _display_selected_ticket(self):
+        sel = self.ticket_listbox.GetSelection()
+        if sel == wx.NOT_FOUND:
+            return
+        ticket_data = self.ticket_listbox.GetClientData(sel)
+        if not ticket_data:
+            return
+        self.active_ticket = ticket_data
+        t_id = ticket_data.get("ticket_id")
+        t_title = ticket_data.get("title")
+        t_status = ticket_data.get("status", "open")
+        status_label = tr("TICKET_STATUS_OPEN") if t_status == "open" else tr("TICKET_STATUS_CLOSED")
+        self.ticket_status_lbl.SetLabel(f"#{t_id} - {t_title} ({status_label})")
+        self._refresh_ticket_thread()
+
+    def _refresh_ticket_thread(self):
+        if not self.active_ticket:
+            return
+        ticket_id = self.active_ticket.get("ticket_id")
+        ticket_key = self.active_ticket.get("ticket_key")
+        self.thread_ctrl.SetValue("Loading replies from support server...")
+
+        def worker():
+            success, data, err = support_client.fetch_ticket(ticket_id, ticket_key)
+
+            def done():
+                if success:
+                    status = data.get("status", "open")
+                    self.active_ticket["status"] = status
+                    self.config.save()
+                    status_label = tr("TICKET_STATUS_OPEN") if status == "open" else tr("TICKET_STATUS_CLOSED")
+                    self.ticket_status_lbl.SetLabel(
+                        f"#{ticket_id} - {self.active_ticket.get('title')} ({status_label})"
+                    )
+
+                    lines = []
+                    comments = data.get("comments", [])
+                    if not comments:
+                        lines.append("No replies yet. Your ticket is currently awaiting developer review.")
+                    else:
+                        for c in comments:
+                            author = "Developer (Muhamad Alfian)" if c.get("is_admin") else "You"
+                            time_str = c.get("created_at", "")[:19].replace("T", " ")
+                            lines.append(f"[{author}] {time_str}")
+                            lines.append(c.get("body", "").strip())
+                            lines.append("-" * 48)
+                    self.thread_ctrl.SetValue("\n\n".join(lines))
+                else:
+                    self.thread_ctrl.SetValue(f"Unable to fetch replies: {err}")
+
+            wx.CallAfter(done)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def on_submit_ticket(self, event: wx.CommandEvent):
+        title = self.title_ctrl.GetValue().strip()
+        desc = self.desc_ctrl.GetValue().strip()
+        if not title or not desc:
+            wx.Bell()
+            wx.MessageBox(
+                "Please enter both a title and description for your ticket.",
+                "Missing Fields",
+                wx.OK | wx.ICON_WARNING,
+                self
+            )
+            return
+
+        cat_idx = self.category_choice.GetSelection()
+        cat_map = ["Bug Report", "Feature Request", "Question & Support", "Other"]
+        category = cat_map[cat_idx] if cat_idx < len(cat_map) else "Support"
+
+        self.submit_btn.Enable(False)
+        self.submit_status_lbl.SetLabel(tr("TICKET_SUBMITTING"))
+
+        def worker():
+            success, res, err = support_client.create_ticket(
+                category=category,
+                title=title,
+                description=desc,
+                client_version=APP_VERSION,
+                attach_sys_info=self.sysinfo_chk.IsChecked()
+            )
+
+            def done():
+                self.submit_btn.Enable(True)
+                if success:
+                    ticket_record = {
+                        "ticket_id": res.get("ticket_id"),
+                        "ticket_key": res.get("ticket_key"),
+                        "title": title,
+                        "category": category,
+                        "status": res.get("status", "open"),
+                        "created_at": res.get("created_at", "")
+                    }
+                    self.config.add_user_ticket(ticket_record)
+                    self.config.save()
+
+                    self.title_ctrl.SetValue("")
+                    self.desc_ctrl.SetValue("")
+                    self.submit_status_lbl.SetLabel("")
+                    wx.Bell()
+                    wx.MessageBox(
+                        tr("TICKET_SUBMIT_SUCCESS", id=ticket_record["ticket_id"]),
+                        "Ticket Submitted",
+                        wx.OK | wx.ICON_INFORMATION,
+                        self
+                    )
+                    self._populate_ticket_list()
+                    self.notebook.SetSelection(1)
+                else:
+                    self.submit_status_lbl.SetLabel(tr("TICKET_SUBMIT_FAILED", error=err))
+                    wx.MessageBox(
+                        tr("TICKET_SUBMIT_FAILED", error=err),
+                        "Submission Error",
+                        wx.OK | wx.ICON_ERROR,
+                        self
+                    )
+
+            wx.CallAfter(done)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def on_send_reply(self, event: wx.CommandEvent):
+        if not self.active_ticket:
+            return
+        reply_msg = self.reply_ctrl.GetValue().strip()
+        if not reply_msg:
+            return
+
+        ticket_id = self.active_ticket.get("ticket_id")
+        ticket_key = self.active_ticket.get("ticket_key")
+        self.reply_btn.Enable(False)
+
+        def worker():
+            success, res, err = support_client.reply_to_ticket(ticket_id, ticket_key, reply_msg)
+
+            def done():
+                self.reply_btn.Enable(True)
+                if success:
+                    self.reply_ctrl.SetValue("")
+                    self._refresh_ticket_thread()
+                else:
+                    wx.MessageBox(tr("TICKET_REPLY_FAILED", error=err), "Error", wx.OK | wx.ICON_ERROR, self)
+
+            wx.CallAfter(done)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+
 class AccessibilityGuideDialog(wx.Dialog):
     """
     Accessible dialog displaying screen reader navigation guidelines,
@@ -805,6 +1245,7 @@ class AccessibilityGuideDialog(wx.Dialog):
         guide_content = (
             f"GhostWave Studio v{APP_VERSION}\n"
             "Screen Reader Accessibility and Keyboard Navigation Manual\n\n"
+            "Original Website: http://technokerslab.blogspot.com/\n\n"
             "Overview:\n"
             "GhostWave Studio is designed with an accessibility-first architecture.\n"
             "All controls provide explicit MSAA and UI Automation accessible names.\n"
@@ -816,6 +1257,7 @@ class AccessibilityGuideDialog(wx.Dialog):
             "  Ctrl+Shift+Tab: Switch backward between tabs.\n"
             "  Escape: Dismiss active modal dialogs and popup sheets.\n"
             "  F1: Open this accessibility guide.\n"
+            "  Ctrl+T: Open Support Ticket center.\n"
             "  Ctrl+H or Shift+F1: Open the Suno Stealth Protocol cheat sheet.\n\n"
             "Audio Sanitizer Tab (Alt+1 or Ctrl+Tab):\n"
             "  Alt+B: Browse for input audio file.\n"
@@ -835,7 +1277,11 @@ class AccessibilityGuideDialog(wx.Dialog):
             "  Ctrl+L: Open Cloud LLM settings dialog.\n\n"
             "Screen Reader Compatibility:\n"
             "Tested with NVDA 2023+, JAWS 2023+, and Windows Narrator.\n"
-            "All status updates are announced via status bar text and system audio cues."
+            "All status updates are announced via status bar text and system audio cues.\n\n"
+            "Support and Inquiries:\n"
+            "For assistance, questions, or bug reports, email hafiyanajah@gmail.com or submit an in-app support ticket (Ctrl+T).\n\n"
+            "Open Source Notice:\n"
+            "GhostWave Studio is open source software. If you would like to contribute or view the repository, visit: https://github.com/muhamadalfian20892/GhostWave-Studio"
         )
 
         self.text_ctrl = wx.TextCtrl(
@@ -904,7 +1350,7 @@ class AboutDialog(wx.Dialog):
             parent,
             title=f"About GhostWave Studio v{APP_VERSION}",
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
-            size=(620, 520)
+            size=(620, 540)
         )
         self.SetName("About GhostWave Studio Dialog")
 
@@ -925,6 +1371,8 @@ class AboutDialog(wx.Dialog):
             "Acoustic Stealth and Audio Cloaking Engine for Music Generation Platforms.\n"
             "Transforms source audio and lyrics into acoustic structures that bypass\n"
             "automated acoustic fingerprinting (Audible Magic, VIBE) and speech transcription filters.\n\n"
+            "Original Website:\n"
+            "  http://technokerslab.blogspot.com/\n\n"
             "Encrypted Profile Vault (.sn):\n"
             "  Hardware-keyed AES-256 binary container protecting API keys, presets, and paths.\n"
             "  Zero plaintext credential exposure on disk.\n"
@@ -940,7 +1388,11 @@ class AboutDialog(wx.Dialog):
             "  Cloud API Stem Isolation: Remote stem separation with zero local model weights.\n"
             "  Chromaprint Audit: Quantitative evasion verification.\n\n"
             "Accessibility:\n"
-            "  MSAA and UI Automation compliant controls, keyboard navigation, and screen reader feedback."
+            "  MSAA and UI Automation compliant controls, keyboard navigation, and screen reader feedback.\n\n"
+            "Support and Inquiries:\n"
+            "  Contact: hafiyanajah@gmail.com or submit an in-app support ticket (Ctrl+T).\n\n"
+            "Open Source Contribution:\n"
+            "  GhostWave Studio is open source software. To contribute or inspect source code, visit: https://github.com/muhamadalfian20892/GhostWave-Studio"
         )
 
         self.text_ctrl = wx.TextCtrl(
@@ -1687,6 +2139,26 @@ class AudioSanitizerPanel(wx.Panel):
             )
         self.process_btn.SetFocus()
 
+    def retranslate_ui(self):
+        """Dynamically retranslates UI labels and tooltips in the Audio Sanitizer tab."""
+        self.browse_btn.SetLabel(f"&{tr('AUDIO_SELECT_BTN')}")
+        self.process_btn.SetLabel(tr("AUDIO_PROCESS_BTN"))
+        if self.adv_panel.IsShown():
+            self.toggle_adv_btn.SetLabel(tr("AUDIO_HIDE_ADVANCED_BTN"))
+        else:
+            self.toggle_adv_btn.SetLabel(tr("AUDIO_SHOW_ADVANCED_BTN"))
+
+        self.jitter_chk.SetLabel(tr("AUDIO_CHRONO_JITTER"))
+        self.bode_chk.SetLabel(tr("AUDIO_BODE_SHIFT"))
+        self.decoy_chk.SetLabel(tr("AUDIO_ADVERSARIAL_PEAKS"))
+        self.allpass_chk.SetLabel(tr("AUDIO_PHASE_DISPERSION"))
+        self.reamping_chk.SetLabel(tr("AUDIO_REAMP_ROOM"))
+        self.vocal_chk.SetLabel(tr("AUDIO_VOCAL_CUT"))
+        self.filter_chk.SetLabel(tr("AUDIO_EQ_FILTERS"))
+        self.dither_chk.SetLabel(tr("AUDIO_DITHER"))
+        self.trim_chk.SetLabel(tr("AUDIO_TRIM_CLIP"))
+        self.metadata_chk.SetLabel(tr("AUDIO_STRIP_METADATA"))
+
 
 class LyricsSanitizerPanel(wx.Panel):
     """
@@ -1971,19 +2443,20 @@ class LyricsSanitizerPanel(wx.Panel):
         self.set_status("Loaded sample copyright lyrics into input.")
         self.sanitize_btn.SetFocus()
 
-    def on_input_text_changed(self, event: wx.CommandEvent):
+    def on_input_text_changed(self, event: Optional[wx.CommandEvent] = None):
         val = self.input_text_ctrl.GetValue()
         chars = len(val)
         words = len(val.split())
         lines = len([line for line in val.splitlines() if line.strip()])
-        self.input_stats_label.SetLabel(f"Characters: {chars} | Words: {words} | Lines: {lines}")
-        event.Skip()
+        self.input_stats_label.SetLabel(tr("LYRICS_STATS_FORMAT", chars=chars, words=words, lines=lines))
+        if event:
+            event.Skip()
 
     def on_clear(self, event: wx.CommandEvent):
         self.input_text_ctrl.Clear()
         self.output_text_ctrl.Clear()
         self.changes_ctrl.Clear()
-        self.input_stats_label.SetLabel("Characters: 0 | Words: 0 | Lines: 0")
+        self.input_stats_label.SetLabel(tr("LYRICS_STATS_FORMAT", chars=0, words=0, lines=0))
         self.set_status("Cleared lyrics fields.")
         self.input_text_ctrl.SetFocus()
 
@@ -2097,6 +2570,12 @@ class LyricsSanitizerPanel(wx.Panel):
                 self
             )
 
+    def retranslate_ui(self):
+        """Dynamically retranslates UI labels in the Lyrics Sanitizer tab."""
+        self.sanitize_btn.SetLabel(tr("LYRICS_PROCESS_BTN"))
+        self.copy_btn.SetLabel(tr("LYRICS_COPY_BTN"))
+        self.on_input_text_changed(None)
+
 
 class GhostWaveFrame(wx.Frame):
     """
@@ -2138,11 +2617,11 @@ class GhostWaveFrame(wx.Frame):
 
         # Tab 1: Audio Sanitizer
         self.audio_tab = AudioSanitizerPanel(self.notebook, self.audio_processor, self.set_status_text)
-        self.notebook.AddPage(self.audio_tab, "Audio Stealth Cloak", select=True)
+        self.notebook.AddPage(self.audio_tab, tr("TAB_AUDIO"), select=True)
 
         # Tab 2: Lyrics Sanitizer
         self.lyrics_tab = LyricsSanitizerPanel(self.notebook, self.lyrics_processor, self.set_status_text)
-        self.notebook.AddPage(self.lyrics_tab, "Lyrics Moderation Shield", select=False)
+        self.notebook.AddPage(self.lyrics_tab, tr("TAB_LYRICS"), select=False)
 
         main_sizer.Add(self.notebook, 1, wx.EXPAND | wx.ALL, 6)
         panel.SetSizer(main_sizer)
@@ -2162,70 +2641,123 @@ class GhostWaveFrame(wx.Frame):
             pass
 
     def _build_menu(self):
-        menu_bar = wx.MenuBar()
+        self.menu_bar = wx.MenuBar()
 
         # File Menu
-        file_menu = wx.Menu()
-        open_item = file_menu.Append(wx.ID_OPEN, "&Browse Audio File...\tCtrl+O", "Select an audio file for processing")
-        file_menu.AppendSeparator()
-        export_profile_item = file_menu.Append(
+        self.file_menu = wx.Menu()
+        self.open_item = self.file_menu.Append(wx.ID_OPEN, "&Browse Audio File...\tCtrl+O", "Select an audio file for processing")
+        self.file_menu.AppendSeparator()
+        self.export_profile_item = self.file_menu.Append(
             wx.ID_ANY,
             "&Export Encrypted Profile (.sn)...\tCtrl+Shift+S",
             "Export all settings and API tokens into an encrypted .sn vault"
         )
-        import_profile_item = file_menu.Append(
+        self.import_profile_item = self.file_menu.Append(
             wx.ID_ANY,
             "&Import Encrypted Profile (.sn)...\tCtrl+Shift+O",
             "Load and decrypt configuration from a .sn vault"
         )
-        file_menu.AppendSeparator()
-        exit_item = file_menu.Append(wx.ID_EXIT, "E&xit\tAlt+F4", "Exit GhostWave Studio")
-        menu_bar.Append(file_menu, "&File")
+        self.file_menu.AppendSeparator()
+        self.exit_item = self.file_menu.Append(wx.ID_EXIT, tr("MENU_EXIT"), "Exit GhostWave Studio")
+        self.menu_bar.Append(self.file_menu, tr("MENU_FILE"))
 
         # Edit Menu
-        edit_menu = wx.Menu()
-        blacklist_item = edit_menu.Append(wx.ID_ANY, "Edit Celebrity &Blacklist...\tCtrl+B", "Open the celebrity blacklist editor")
-        copy_item = edit_menu.Append(wx.ID_COPY, "&Copy Sanitized Lyrics\tCtrl+Shift+C", "Copy sanitized lyrics to clipboard")
-        menu_bar.Append(edit_menu, "&Edit")
+        self.edit_menu = wx.Menu()
+        self.blacklist_item = self.edit_menu.Append(wx.ID_ANY, "Edit Celebrity &Blacklist...\tCtrl+B", "Open the celebrity blacklist editor")
+        self.copy_item = self.edit_menu.Append(wx.ID_COPY, "&Copy Sanitized Lyrics\tCtrl+Shift+C", "Copy sanitized lyrics to clipboard")
+        self.menu_bar.Append(self.edit_menu, "&Edit")
 
         # Actions Menu
-        action_menu = wx.Menu()
-        process_audio_item = action_menu.Append(wx.ID_ANY, "&Process Audio\tCtrl+P", "Execute audio sanitization")
-        audit_item = action_menu.Append(wx.ID_ANY, "Run &Evasion Audit...\tCtrl+E", "Run Chromaprint acoustic audit")
-        slicer_item = action_menu.Append(wx.ID_ANY, "ABS Audio &Slicer...\tCtrl+U", "Slice audio into safe 20-24s WAV chunks")
-        protocol_item = action_menu.Append(wx.ID_ANY, "GhostWave Stealth &Protocol...\tCtrl+H", "View Suno upload protocol and cheat sheet")
-        cloud_item = action_menu.Append(wx.ID_ANY, "Cloud &API Settings (Vault)...\tCtrl+K", "Configure Cloud stem separation credentials")
-        action_menu.AppendSeparator()
-        sanitize_lyrics_item = action_menu.Append(wx.ID_ANY, "&Sanitize Lyrics\tCtrl+S", "Execute lyrics sanitization")
-        menu_bar.Append(action_menu, "&Actions")
+        self.action_menu = wx.Menu()
+        self.process_audio_item = self.action_menu.Append(wx.ID_ANY, "&Process Audio\tCtrl+P", "Execute audio sanitization")
+        self.audit_item = self.action_menu.Append(wx.ID_ANY, "Run &Evasion Audit...\tCtrl+E", "Run Chromaprint acoustic audit")
+        self.slicer_item = self.action_menu.Append(wx.ID_ANY, "ABS Audio &Slicer...\tCtrl+U", "Slice audio into safe 20-24s WAV chunks")
+        self.protocol_item = self.action_menu.Append(wx.ID_ANY, "GhostWave Stealth &Protocol...\tCtrl+H", "View Suno upload protocol and cheat sheet")
+        self.cloud_item = self.action_menu.Append(wx.ID_ANY, "Cloud &API Settings (Vault)...\tCtrl+K", "Configure Cloud stem separation credentials")
+        self.action_menu.AppendSeparator()
+        self.sanitize_lyrics_item = self.action_menu.Append(wx.ID_ANY, "&Sanitize Lyrics\tCtrl+S", "Execute lyrics sanitization")
+        self.menu_bar.Append(self.action_menu, "&Actions")
+
+        # Language Menu
+        self.lang_menu = wx.Menu()
+        self.lang_en_item = self.lang_menu.AppendRadioItem(wx.ID_ANY, tr("MENU_LANG_EN"), "Switch interface language to English")
+        self.lang_id_item = self.lang_menu.AppendRadioItem(wx.ID_ANY, tr("MENU_LANG_ID"), "Ganti bahasa antarmuka ke Bahasa Indonesia")
+        current_lang = get_language()
+        if current_lang == "id":
+            self.lang_id_item.Check(True)
+        else:
+            self.lang_en_item.Check(True)
+        self.menu_bar.Append(self.lang_menu, tr("MENU_LANGUAGE"))
 
         # Help Menu
-        help_menu = wx.Menu()
-        protocol_help_item = help_menu.Append(wx.ID_ANY, "Stealth &Upload Protocol && Cheat Sheet...\tShift+F1", "View battle-tested Suno upload cheat sheet")
-        check_update_item = help_menu.Append(wx.ID_ANY, "Check for &Updates...", "Check GitHub for latest release and changelog")
-        a11y_item = help_menu.Append(wx.ID_HELP, "&Accessibility Guide\tF1", "View screen reader accessibility shortcuts")
-        about_item = help_menu.Append(wx.ID_ABOUT, f"&About GhostWave Studio v{APP_VERSION}", "About this application")
-        menu_bar.Append(help_menu, "&Help")
+        self.help_menu = wx.Menu()
+        self.protocol_help_item = self.help_menu.Append(wx.ID_ANY, "Stealth &Upload Protocol && Cheat Sheet...\tShift+F1", "View battle-tested Suno upload cheat sheet")
+        self.ticket_item = self.help_menu.Append(wx.ID_ANY, tr("MENU_SUPPORT_TICKETS"), "Open support center and submit tickets")
+        self.check_update_item = self.help_menu.Append(wx.ID_ANY, tr("MENU_CHECK_UPDATES"), "Check GitHub for latest release and changelog")
+        self.a11y_item = self.help_menu.Append(wx.ID_HELP, tr("MENU_ACCESSIBILITY_GUIDE"), "View screen reader accessibility shortcuts")
+        self.about_item = self.help_menu.Append(wx.ID_ABOUT, f"{tr('MENU_ABOUT')} v{APP_VERSION}", "About this application")
+        self.menu_bar.Append(self.help_menu, tr("MENU_HELP"))
 
-        self.SetMenuBar(menu_bar)
+        self.SetMenuBar(self.menu_bar)
 
         # Bind Menu Events
-        self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_browse(e), open_item)
-        self.Bind(wx.EVT_MENU, self.on_export_profile, export_profile_item)
-        self.Bind(wx.EVT_MENU, self.on_import_profile, import_profile_item)
-        self.Bind(wx.EVT_MENU, lambda e: self.Close(True), exit_item)
-        self.Bind(wx.EVT_MENU, lambda e: self.lyrics_tab.on_edit_blacklist(e), blacklist_item)
-        self.Bind(wx.EVT_MENU, lambda e: self.lyrics_tab.on_copy(e), copy_item)
-        self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_process(e), process_audio_item)
-        self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_audit(e), audit_item)
-        self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_slicer(e), slicer_item)
-        self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_protocol(e), protocol_item)
-        self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_protocol(e), protocol_help_item)
-        self.Bind(wx.EVT_MENU, self.on_check_updates_menu, check_update_item)
-        self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_cloud_settings(e), cloud_item)
-        self.Bind(wx.EVT_MENU, lambda e: self.lyrics_tab.on_sanitize(e), sanitize_lyrics_item)
-        self.Bind(wx.EVT_MENU, self.on_accessibility_guide, a11y_item)
-        self.Bind(wx.EVT_MENU, self.on_about, about_item)
+        self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_browse(e), self.open_item)
+        self.Bind(wx.EVT_MENU, self.on_export_profile, self.export_profile_item)
+        self.Bind(wx.EVT_MENU, self.on_import_profile, self.import_profile_item)
+        self.Bind(wx.EVT_MENU, lambda e: self.Close(True), self.exit_item)
+        self.Bind(wx.EVT_MENU, lambda e: self.lyrics_tab.on_edit_blacklist(e), self.blacklist_item)
+        self.Bind(wx.EVT_MENU, lambda e: self.lyrics_tab.on_copy(e), self.copy_item)
+        self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_process(e), self.process_audio_item)
+        self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_audit(e), self.audit_item)
+        self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_slicer(e), self.slicer_item)
+        self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_protocol(e), self.protocol_item)
+        self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_protocol(e), self.protocol_help_item)
+        self.Bind(wx.EVT_MENU, lambda e: self.on_change_language("en"), self.lang_en_item)
+        self.Bind(wx.EVT_MENU, lambda e: self.on_change_language("id"), self.lang_id_item)
+        self.Bind(wx.EVT_MENU, self.on_support_tickets, self.ticket_item)
+        self.Bind(wx.EVT_MENU, self.on_check_updates_menu, self.check_update_item)
+        self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_cloud_settings(e), self.cloud_item)
+        self.Bind(wx.EVT_MENU, lambda e: self.lyrics_tab.on_sanitize(e), self.sanitize_lyrics_item)
+        self.Bind(wx.EVT_MENU, self.on_accessibility_guide, self.a11y_item)
+        self.Bind(wx.EVT_MENU, self.on_about, self.about_item)
+
+    def on_support_tickets(self, event: wx.CommandEvent):
+        dlg = SupportTicketDialog(self)
+        dlg.ShowModal()
+        dlg.Destroy()
+
+    def on_change_language(self, lang_code: str):
+        set_language(lang_code)
+        cfg = GhostWaveConfig.load()
+        cfg.language = lang_code
+        cfg.save()
+        self.retranslate_ui()
+        wx.Bell()
+        self.set_status_text(f"Language changed to: {lang_code.upper()}")
+
+    def retranslate_ui(self):
+        self.SetTitle(f"{tr('APP_TITLE')} v{APP_VERSION} - {tr('APP_SUBTITLE')}")
+        self.menu_bar.SetMenuLabel(0, tr("MENU_FILE"))
+        self.menu_bar.SetMenuLabel(1, "&Edit")
+        self.menu_bar.SetMenuLabel(2, "&Actions")
+        self.menu_bar.SetMenuLabel(3, tr("MENU_LANGUAGE"))
+        self.menu_bar.SetMenuLabel(4, tr("MENU_HELP"))
+
+        self.exit_item.SetItemLabel(tr("MENU_EXIT"))
+        self.lang_en_item.SetItemLabel(tr("MENU_LANG_EN"))
+        self.lang_id_item.SetItemLabel(tr("MENU_LANG_ID"))
+        self.a11y_item.SetItemLabel(tr("MENU_ACCESSIBILITY_GUIDE"))
+        self.about_item.SetItemLabel(f"{tr('MENU_ABOUT')} v{APP_VERSION}")
+        self.check_update_item.SetItemLabel(tr("MENU_CHECK_UPDATES"))
+        self.ticket_item.SetItemLabel(tr("MENU_SUPPORT_TICKETS"))
+
+        self.notebook.SetPageText(0, tr("TAB_AUDIO"))
+        self.notebook.SetPageText(1, tr("TAB_LYRICS"))
+
+        if hasattr(self.audio_tab, "retranslate_ui"):
+            self.audio_tab.retranslate_ui()
+        if hasattr(self.lyrics_tab, "retranslate_ui"):
+            self.lyrics_tab.retranslate_ui()
 
     def on_export_profile(self, event: wx.CommandEvent):
         """Exports all configurations to a user-specified encrypted .sn file."""

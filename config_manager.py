@@ -55,8 +55,11 @@ class GhostWaveConfig:
     """
     # Metadata
     app_name: str = "GhostWave Studio"
-    app_version: str = "1.3.0"
+    app_version: str = "1.4.0"
     check_updates_on_startup: bool = True
+    language: str = "en"
+    first_run: bool = True
+    user_tickets: list[dict[str, Any]] = field(default_factory=list)
 
     # Cloud Stem API Credentials (Encrypted)
     cloud_provider: str = "replicate"             # "replicate", "huggingface", or "custom"
@@ -109,6 +112,13 @@ class GhostWaveConfig:
     def to_dict(self) -> dict[str, Any]:
         """Converts configuration dataclass to dictionary."""
         return asdict(self)
+
+    def add_user_ticket(self, ticket: dict[str, Any]) -> None:
+        """Appends a new support ticket record to the user's local ticket vault."""
+        if not hasattr(self, "user_tickets") or self.user_tickets is None:
+            self.user_tickets = []
+        # Prepend so newest is first
+        self.user_tickets.insert(0, ticket)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "GhostWaveConfig":

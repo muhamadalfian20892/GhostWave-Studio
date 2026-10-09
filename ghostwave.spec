@@ -7,7 +7,7 @@ a_gui = Analysis(
     ['gui.py'],
     pathex=['.'],
     binaries=[],
-    datas=[('ghostwave.ico', '.'), ('changelog.txt', '.'), ('README.txt', '.')],
+    datas=[('ghostwave.ico', '.'), ('changelog.txt', '.'), ('README.txt', '.'), ('README_ID.txt', '.'), ('locales', 'locales')],
     hiddenimports=[
         'scipy.special',
         'scipy.signal',
@@ -56,7 +56,7 @@ a_cli = Analysis(
     ['main.py'],
     pathex=['.'],
     binaries=[],
-    datas=[('ghostwave.ico', '.'), ('changelog.txt', '.'), ('README.txt', '.')],
+    datas=[('ghostwave.ico', '.'), ('changelog.txt', '.'), ('README.txt', '.'), ('README_ID.txt', '.'), ('locales', 'locales')],
     hiddenimports=[
         'scipy.special',
         'scipy.signal',

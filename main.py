@@ -177,9 +177,25 @@ def run_lyrics_cli(args: argparse.Namespace) -> int:
 def run_gui():
     """Initializes wx application loop and displays GhostWave Studio."""
     import wx
-    from gui import GhostWaveFrame
+    from gui import GhostWaveFrame, LanguageSelectionDialog
+    from config_manager import GhostWaveConfig
+    from i18n import init_translations, set_language
 
     app = wx.App(False)
+    cfg = GhostWaveConfig.load()
+    current_lang = getattr(cfg, "language", "en")
+    init_translations(current_lang)
+
+    if getattr(cfg, "first_run", True):
+        dlg = LanguageSelectionDialog(current_lang=current_lang)
+        if dlg.ShowModal() == wx.ID_OK:
+            chosen = dlg.get_selected_language()
+            set_language(chosen)
+            cfg.language = chosen
+        cfg.first_run = False
+        cfg.save()
+        dlg.Destroy()
+
     frame = GhostWaveFrame()
     frame.Show()
     app.MainLoop()

@@ -1,5 +1,7 @@
-GHOSTWAVE STUDIO (VERSION 1.3.0)
+GHOSTWAVE STUDIO (VERSION 1.4.0)
 USER GUIDE AND GETTING STARTED MANUAL
+
+Original Website: http://technokerslab.blogspot.com/
 
 Welcome to GhostWave Studio! If you are looking for an easy, no-nonsense way
 to prepare your audio tracks and lyrics for platforms like Suno without running
@@ -25,6 +27,40 @@ All your private API keys and settings are stored locally inside an encrypted
 vault file named ghostwave.sn on your computer. Nothing is ever sent to any
 unauthorized server, and you do not have to download giant machine learning
 models just to use the software.
+
+
+LANGUAGE SUPPORT AND REALTIME SWITCHING
+
+Starting in version 1.4.0, GhostWave Studio features full internationalization
+support for both English and Bahasa Indonesia.
+
+When you launch the application for the very first time, a language selection
+dialog welcomes you, allowing you to choose your preferred language right away.
+You can also change the interface language at any time from the Language menu
+in the menu bar. The interface updates immediately in real-time without needing
+to restart the program.
+
+
+SUPPORT TICKETS AND GETTING HELP
+
+If you ever encounter an issue, discover an audio file format that fails to
+process, or have an idea for a new feature, you can send a support ticket directly
+from inside the application without needing a browser.
+
+1. Press Ctrl+T on your keyboard or select Help > Support Tickets in the menu bar.
+2. Choose your ticket category from the list: Bug Report, Feature Request, Question
+and Support, or Other.
+3. Type in a subject and detailed description of the situation.
+4. Leave the system diagnostics box checked so our developer can see your operating
+system details and app version to fix the problem quickly.
+5. Click Submit Ticket.
+
+Your ticket is securely delivered to our private repository. You can check the
+"My Tickets" tab at any time to read replies from the developer and send follow-up
+messages directly in the dialog.
+
+You can also reach out directly via email at hafiyanajah@gmail.com for any
+inquiries or feedback.
 
 
 QUICK START: CLEANING YOUR AUDIO IN THREE EASY STEPS
@@ -121,6 +157,7 @@ Alt+E: Open the Evasion Safety Audit report.
 Alt+S: In the Audio tab, opens the ABS Audio Slicer. In the Lyrics tab, runs
 the lyrics sanitizer.
 Alt+A: Open Cloud API settings.
+Ctrl+T: Open Support Ticket Center.
 Ctrl+U: Open the ABS Audio Slicer from anywhere in the app.
 Ctrl+B: Open the Celebrity Blacklist editor.
 Ctrl+H or Shift+F1: Open the Suno Upload Protocol cheat sheet.
@@ -142,8 +179,9 @@ the same window, or click "Download Now" to let the software download the new
 installer and guide you through the update in seconds.
 
 
-THANK YOU FOR USING GHOSTWAVE STUDIO
+OPEN SOURCE AND COMMUNITY CONTRIBUTION
 
-We hope this tool saves you time and keeps your creative workflow moving smoothly.
-If you ever run into odd behavior or have suggestions for new features, feel
-free to let us know through our GitHub repository.
+GhostWave Studio is completely open source software. If you would like to inspect
+the source code, submit bug reports, suggest improvements, or contribute code,
+please visit our official GitHub repository:
+https://github.com/muhamadalfian20892/GhostWave-Studio
