@@ -63,6 +63,22 @@ pyinstaller ghostwave.spec --noconfirm --clean
 
 ## Development Changelog and Release Notes
 
+New on 10/09/2026:
+
+	Added an in-app update checker that queries the GitHub releases API directly without intermediary servers. A fallback to changelog.txt at the repository root guarantees update availability even when anonymous API rate limits are reached.
+
+	Designed an accessible update prompt dialog in updater.py following the standard desktop pattern. The dialog announces "Version X.Y.Z is available. Download this update?" and provides "Download Later", "Download Now", and "See What's New in This Changes" action buttons.
+
+	Implemented an inline changelog reader inside the update dialog. Clicking "See What's New in This Changes" expands the release notes panel in the same window while keeping the download buttons visible and accessible, maintaining screen reader focus without popout navigation friction.
+
+	Integrated a streaming chunked background downloader for setup binaries. The download dialog reports progress bytes, percentage, and estimated completion, followed by an immediate prompt to execute the installer.
+
+	Added full keyboard accessibility and screen reader support across all update controls. Every button, status label, progress indicator, and text control includes an explicit name and mnemonic shortcut.
+
+	Added the --check-update command-line flag in main.py for headless environments and batch scripts.
+
+	Added unit tests in test_app.py covering version comparison logic, changelog parser routines, update dialog state toggles, and screen reader labels, bringing the test suite to 29 tests.
+
 New on 10/08/2026:
 
 	Added native multilingual support to the Acoustic Spelling Scrambler for Indonesian, Spanish, French, and other Latin-script languages. The earlier dictionary was English-oriented, which caused non-English text to pass through without orthographic changes.
@@ -188,6 +204,7 @@ Start the interface by running `python gui.py` or `python main.py`.
 * Profile Export and Import (Ctrl+Shift+S and Ctrl+Shift+O): Saves or loads encrypted .sn configuration files.
 * Cloud API Vault (Alt+A or Ctrl+K): Manages Replicate and Hugging Face tokens for remote stem processing.
 * Guidelines Reference (Shift+F1 or Ctrl+H): Opens the operational upload reference window.
+* Check for Updates (Help menu): Queries GitHub Releases for newer builds, opens the accessible changelog view, and downloads installers directly.
 
 ---
 
@@ -196,6 +213,9 @@ Start the interface by running `python gui.py` or `python main.py`.
 The command-line interface provides the same processing capabilities for scripts and terminal use:
 
 ```bash
+# Check GitHub for application updates and view release notes
+python main.py --check-update
+
 # Maximum evasion preset with WAV output
 python main.py -i song.mp3 -o cloaked.wav --format wav --preset max
 
@@ -258,7 +278,7 @@ The test suite covers the DSP routines, the .sn cryptographic container, remote 
 python -m unittest test_app.py
 ```
 
-All 23 tests run in approximately 22 seconds.
+All 29 tests run in approximately 30 seconds.
 
 ---
 

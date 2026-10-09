@@ -212,9 +212,28 @@ def main():
     parser.add_argument("--lyrics-out", help="Destination path for cloaked lyrics output file")
     parser.add_argument("--lyrics-mode", choices=["scramble", "hybrid", "phonetic", "semantic", "cloud"], default="scramble", help="Lyrics cloaking strategy (default: scramble)")
     parser.add_argument("--no-adlibs", action="store_true", help="Disable rhythmic ad-libs in lyrics cloaking")
+    parser.add_argument("--check-update", action="store_true", help="Check GitHub for application updates")
     parser.add_argument("--gui", action="store_true", help="Explicitly launch graphical desktop user interface")
 
     args = parser.parse_args()
+
+    if args.check_update:
+        from updater import check_for_updates, APP_VERSION
+        print(f"Checking GitHub for updates (current version: {APP_VERSION})...")
+        info = check_for_updates()
+        if info.has_update:
+            print(f"Update available: v{info.latest_version}")
+            if info.download_url:
+                print(f"Download URL: {info.download_url}")
+            if info.release_notes:
+                print("\nWhat is new:")
+                print(info.release_notes)
+        else:
+            if info.error_message:
+                print(f"Could not check for updates: {info.error_message}")
+            else:
+                print(f"GhostWave Studio is up to date (v{APP_VERSION}).")
+        sys.exit(0)
 
     # If --lyrics is provided without audio input, process lyrics only
     if args.lyrics and not args.input and not args.gui:

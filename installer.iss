@@ -43,6 +43,7 @@ Source: "dist\GhostWaveStudio\*"; DestDir: "{app}"; Flags: ignoreversion recurse
 Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "CONTRIBUTING.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "changelog.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "ghostwave.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]

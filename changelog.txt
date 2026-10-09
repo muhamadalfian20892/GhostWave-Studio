@@ -1,0 +1,16 @@
+GhostWave Studio - Changelog & Release Notes
+
+Version: 1.0.0
+Release Date: 2026-10-09
+Installer: https://github.com/muhamadalfian20892/GhostWave-Studio/releases/download/v1.0.0/GhostWaveStudio-v1.0-Setup.exe
+Portable: https://github.com/muhamadalfian20892/GhostWave-Studio/releases/download/v1.0.0/GhostWaveStudio-v1.0-Portable.zip
+
+What is new:
+* Integrated in-app update checker connecting directly to GitHub releases without intermediary servers.
+* Accessible update prompt dialog with live changelog viewer in the same window.
+* Direct installer downloader with background streaming and progress reporting.
+* Multilingual phonetic lyrics cloaking engine supporting Indonesian, Spanish, and global songs.
+* Syllable preserving phonotactic parser maintaining metric count and musical cadence.
+* Anti-fingerprint acoustic DSP suite with Hilbert Bode frequency shifter and micro-chrono jitter.
+* Encrypted profile storage in .sn binary containers with AES-128 and HMAC-SHA256 authentication.
+* Full accessibility labels and keyboard shortcuts across all desktop dialogs and controls.

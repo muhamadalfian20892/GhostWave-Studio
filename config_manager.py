@@ -55,7 +55,8 @@ class GhostWaveConfig:
     """
     # Metadata
     app_name: str = "GhostWave Studio"
-    app_version: str = "1.0"
+    app_version: str = "1.0.0"
+    check_updates_on_startup: bool = True
 
     # Cloud Stem API Credentials (Encrypted)
     cloud_provider: str = "replicate"             # "replicate", "huggingface", or "custom"

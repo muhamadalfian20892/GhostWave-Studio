@@ -311,5 +311,139 @@ class TestAudioProcessorModules(unittest.TestCase):
         self.assertEqual(drone.shape, self.sample_audio.shape)
 
 
+class TestGhostWaveUpdater(unittest.TestCase):
+    """Verifies update checking, changelog parsing, and screen reader accessible dialogs."""
+
+    def test_normalize_version(self):
+        from updater import normalize_version
+        self.assertEqual(normalize_version("1.0.0"), (1, 0, 0))
+        self.assertEqual(normalize_version("v1.2.0"), (1, 2, 0))
+        self.assertEqual(normalize_version("1.0"), (1, 0, 0))
+        self.assertEqual(normalize_version("v2.1.3-beta"), (2, 1, 3))
+
+    def test_compare_versions(self):
+        from updater import compare_versions
+        # Remote newer -> 1
+        self.assertEqual(compare_versions("1.0.0", "1.2.0"), 1)
+        self.assertEqual(compare_versions("1.0.0", "v1.0.1"), 1)
+        self.assertEqual(compare_versions("1.0.0", "2.0.0"), 1)
+        # Equal -> 0
+        self.assertEqual(compare_versions("1.0.0", "1.0.0"), 0)
+        self.assertEqual(compare_versions("1.0.0", "v1.0.0"), 0)
+        # Remote older -> -1
+        self.assertEqual(compare_versions("1.2.0", "1.0.0"), -1)
+        self.assertEqual(compare_versions("2.0.0", "1.9.9"), -1)
+
+    def test_parse_changelog_text(self):
+        from updater import parse_changelog_text
+        sample_cl = (
+            "Version: 1.2.0\n"
+            "Release Date: 2026-10-09\n"
+            "Installer: https://github.com/muhamadalfian20892/GhostWave-Studio/releases/download/v1.2.0/GhostWaveStudio-v1.2.0-Setup.exe\n"
+            "Portable: https://github.com/muhamadalfian20892/GhostWave-Studio/releases/download/v1.2.0/GhostWaveStudio-v1.2.0-Portable.zip\n\n"
+            "What is new:\n"
+            "* Added in-app updater\n"
+            "* Added changelog viewer\n"
+        )
+        parsed = parse_changelog_text(sample_cl)
+        self.assertEqual(parsed["version"], "1.2.0")
+        self.assertEqual(parsed["date"], "2026-10-09")
+        self.assertIn("GhostWaveStudio-v1.2.0-Setup.exe", parsed["installer_url"])
+        self.assertIn("GhostWaveStudio-v1.2.0-Portable.zip", parsed["portable_url"])
+        self.assertIn("Added in-app updater", parsed["notes"])
+
+    def test_update_info_model(self):
+        from updater import UpdateInfo
+        info = UpdateInfo(
+            has_update=True,
+            current_version="1.0.0",
+            latest_version="1.2.0",
+            release_notes="New features added.",
+            download_url="https://github.com/test.exe"
+        )
+        self.assertTrue(info.has_update)
+        self.assertEqual(info.latest_version, "1.2.0")
+        self.assertEqual(info.current_version, "1.0.0")
+
+    def test_update_dialog_accessibility_and_toggle(self):
+        import wx
+        from updater import UpdateInfo, UpdateDialog
+
+        app = wx.App.Get()
+        if not app:
+            app = wx.App(False)
+
+        info = UpdateInfo(
+            has_update=True,
+            current_version="1.0.0",
+            latest_version="1.2.0",
+            release_notes="* Tested item 1\n* Tested item 2",
+            download_url="https://github.com/example/installer.exe"
+        )
+
+        dlg = UpdateDialog(None, info)
+        try:
+            # Check prompt label accessibility
+            self.assertEqual(dlg.prompt_label.GetName(), "Update Question Prompt")
+            self.assertIn("1.2.0", dlg.prompt_label.GetLabel())
+
+            # Check context label accessibility
+            self.assertEqual(dlg.context_label.GetName(), "Current Installed Version Information")
+            self.assertIn("1.0.0", dlg.context_label.GetLabel())
+
+            # Check changelog text and header labels
+            self.assertEqual(dlg.changelog_header_label.GetName(), "Changelog and Release Notes Label")
+            self.assertEqual(dlg.changelog_ctrl.GetName(), "Changelog Text Area")
+            self.assertTrue(dlg.changelog_ctrl.IsEditable() == False)
+
+            # Check action buttons accessibility
+            self.assertEqual(dlg.see_new_btn.GetName(), "See What's New in This Changes Button")
+            self.assertEqual(dlg.later_btn.GetName(), "Download Later Button")
+            self.assertEqual(dlg.download_btn.GetName(), "Download Now Button")
+
+            # Check toggle changelog visibility in the same window
+            self.assertFalse(dlg.changelog_visible)
+            self.assertFalse(dlg.changelog_panel.IsShown())
+
+            # Click / trigger toggle
+            dlg.on_toggle_changelog(None)
+            self.assertTrue(dlg.changelog_visible)
+            self.assertTrue(dlg.changelog_panel.IsShown())
+            self.assertEqual(dlg.see_new_btn.GetLabel(), "&Hide What's New")
+            self.assertEqual(dlg.see_new_btn.GetName(), "Hide What's New Button")
+
+            # Both Download Later and Download Now remain available
+            self.assertTrue(dlg.later_btn.IsShown())
+            self.assertTrue(dlg.download_btn.IsShown())
+
+            # Click again to collapse
+            dlg.on_toggle_changelog(None)
+            self.assertFalse(dlg.changelog_visible)
+            self.assertFalse(dlg.changelog_panel.IsShown())
+            self.assertEqual(dlg.see_new_btn.GetLabel(), "&See What's New in This Changes")
+            self.assertEqual(dlg.see_new_btn.GetName(), "See What's New in This Changes Button")
+
+        finally:
+            dlg.Destroy()
+
+    def test_update_download_dialog_accessibility(self):
+        import wx
+        from updater import UpdateDownloadDialog
+
+        app = wx.App.Get()
+        if not app:
+            app = wx.App(False)
+
+        dlg = UpdateDownloadDialog(None, "https://example.com/file.exe", "file.exe", "1.2.0")
+        try:
+            self.assertEqual(dlg.status_label.GetName(), "Download Status Description")
+            self.assertEqual(dlg.gauge.GetName(), "Download Progress Meter")
+            self.assertEqual(dlg.progress_label.GetName(), "Download Progress Details Label")
+            self.assertEqual(dlg.cancel_btn.GetName(), "Cancel Download Button")
+        finally:
+            dlg.Destroy()
+
+
 if __name__ == "__main__":
     unittest.main()
+

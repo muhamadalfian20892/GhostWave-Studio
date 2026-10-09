@@ -30,6 +30,15 @@ from audio_processor import (
 from cloud_stem_api import CloudApiConfig, CloudStemClient
 from config_manager import GhostWaveConfig, DEFAULT_SN_FILENAME, resolve_config_path
 from lyrics_processor import LyricsProcessor, LyricsSanitizeResult, DEFAULT_CELEBRITY_BLACKLIST
+from updater import (
+    APP_VERSION,
+    UpdateInfo,
+    UpdateDialog,
+    UpdateDownloadDialog,
+    check_for_updates,
+    check_updates_background,
+    run_update_flow
+)
 
 
 class BlacklistDialog(wx.Dialog):
@@ -1790,6 +1799,14 @@ class GhostWaveFrame(wx.Frame):
 
         self.Centre()
 
+        # Background update check if enabled in encrypted config vault
+        try:
+            cfg = GhostWaveConfig.load()
+            if getattr(cfg, "check_updates_on_startup", True):
+                wx.CallLater(1500, self._check_updates_startup)
+        except Exception:
+            pass
+
     def _build_menu(self):
         menu_bar = wx.MenuBar()
 
@@ -1831,6 +1848,7 @@ class GhostWaveFrame(wx.Frame):
         # Help Menu
         help_menu = wx.Menu()
         protocol_help_item = help_menu.Append(wx.ID_ANY, "Stealth &Upload Protocol && Cheat Sheet...\tShift+F1", "View battle-tested Suno upload cheat sheet")
+        check_update_item = help_menu.Append(wx.ID_ANY, "Check for &Updates...", "Check GitHub for latest release and changelog")
         a11y_item = help_menu.Append(wx.ID_HELP, "&Accessibility Guide\tF1", "View screen reader accessibility shortcuts")
         about_item = help_menu.Append(wx.ID_ABOUT, "&About GhostWave Studio v1.0", "About this application")
         menu_bar.Append(help_menu, "&Help")
@@ -1849,6 +1867,7 @@ class GhostWaveFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_slicer(e), slicer_item)
         self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_protocol(e), protocol_item)
         self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_protocol(e), protocol_help_item)
+        self.Bind(wx.EVT_MENU, self.on_check_updates_menu, check_update_item)
         self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_cloud_settings(e), cloud_item)
         self.Bind(wx.EVT_MENU, lambda e: self.lyrics_tab.on_sanitize(e), sanitize_lyrics_item)
         self.Bind(wx.EVT_MENU, self.on_accessibility_guide, a11y_item)
@@ -1937,6 +1956,19 @@ class GhostWaveFrame(wx.Frame):
             _update()
         else:
             wx.CallAfter(_update)
+
+    def _check_updates_startup(self):
+        """Silently queries GitHub for updates in the background on startup."""
+        check_updates_background(self, silent=True, current_version=APP_VERSION)
+
+    def on_check_updates_menu(self, event: wx.CommandEvent):
+        """Manually checks for application updates from GitHub."""
+        self.set_status_text("Checking GitHub for GhostWave Studio updates...")
+
+        def _finish(info):
+            self.set_status_text("Ready.")
+
+        check_updates_background(self, silent=False, current_version=APP_VERSION, on_finish=_finish)
 
     def on_accessibility_guide(self, event: wx.CommandEvent):
         guide = (
