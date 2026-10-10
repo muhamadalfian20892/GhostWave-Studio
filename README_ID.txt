@@ -1,11 +1,11 @@
-GHOSTWAVE STUDIO (VERSI 1.4.0)
+GHOSTWAVE STUDIO (VERSI 1.5.0)
 PANDUAN PENGGUNA DAN PETUNJUK MEMULAI
 
 Situs Web Asli: http://technokerslab.blogspot.com/
 
 Selamat datang di GhostWave Studio! Jika Anda mencari cara yang mudah dan
 praktis untuk menyiapkan lagu dan lirik agar lolos dari pemblokiran otomatis di
-platform seperti Suno, Anda berada di tempat yang tepat. Program ini kami rancang
+platform seperti Suno, Anda berada di tempat yang tepat. Program ini saya rancang
 khusus agar Anda tidak perlu paham bahasa pemrograman, baris perintah, atau
 teori pemrosesan sinyal untuk mendapatkan hasil terbaik.
 
@@ -51,11 +51,11 @@ langsung dari dalam aplikasi tanpa perlu membuka browser.
 2. Pilih kategori laporan Anda: Laporan Kerusakan, Permintaan Fitur, Pertanyaan
 dan Bantuan, atau Lainnya.
 3. Masukkan judul dan deskripsi masalah secara jelas.
-4. Biarkan kotak centang diagnosa sistem tetap aktif agar pengembang kami dapat
+4. Biarkan kotak centang diagnosa sistem tetap aktif agar saya selaku pengembang dapat
 mengetahui versi Windows dan versi aplikasi untuk memperbaiki kendala dengan cepat.
 5. Klik tombol Kirim Tiket.
 
-Tiket Anda akan terkirim dengan aman ke repository privat kami. Anda bisa membuka
+Tiket Anda akan terkirim dengan aman ke sistem saya. Anda bisa membuka
 tab "Tiket Saya" kapan saja untuk membaca balasan dari pengembang dan mengirimkan
 pesan balasan lanjutan langsung di jendela tersebut.
 
@@ -82,7 +82,7 @@ ruang studio, klik tombol "Tampilkan Pengaturan Lanjutan" untuk membukanya.
 
 Langkah 3: Proses dan simpan berkas Anda.
 Klik tombol "Terapkan Penyamaran Audio" atau tekan Alt+P. Tentukan lokasi untuk
-menyimpan berkas baru. Kami sangat menyarankan menyimpan hasil dalam format
+menyimpan berkas baru. Saya sangat menyarankan menyimpan hasil dalam format
 16-bit PCM WAV. Bilah progres akan berjalan seiring berjalannya setiap tahapan,
 dan setelah selesai, Anda mendapatkan berkas audio bersih yang siap diunggah.
 Jika Anda perlu membatalkan di tengah jalan, cukup klik tombol "Batal Proses".
@@ -90,7 +90,7 @@ Jika Anda perlu membatalkan di tengah jalan, cukup klik tombol "Batal Proses".
 
 RAHASIA MENGUNGGAH KE SUNO AGAR TIDAK DIBLOKIR
 
-Dari pengujian intensif selama berbulan-bulan, kami menemukan bahwa cara Anda
+Dari pengujian intensif selama berbulan-bulan, saya menemukan bahwa cara Anda
 mengunggah berkas ke Suno sama pentingnya dengan isi audionya. Ingat selalu
 empat aturan emas berikut:
 
@@ -170,8 +170,8 @@ PEMBARUAN APLIKASI OTOMATIS
 
 Anda tidak perlu memeriksa situs web secara manual untuk mengetahui apakah ada
 versi baru yang dirilis. Setiap kali GhostWave Studio dibuka, aplikasi dapat
-memeriksa rilis terbaru di GitHub secara otomatis di latar belakang. Jika ada
-versi baru, jendela ramah akan muncul menanyakan apakah Anda ingin mengunduhnya.
+memeriksa pembaruan secara mandiri di latar belakang. Jika ada pembaruan yang
+tersedia, jendela ramah akan muncul menanyakan apakah Anda ingin mengunduhnya.
 
 Anda bisa mengklik "Lihat Yang Baru" untuk membaca catatan perubahan di jendela
 yang sama, atau mengklik "Unduh Sekarang" agar aplikasi mengunduh berkas installer
@@ -182,5 +182,5 @@ OPEN SOURCE DAN KONTRIBUSI KOMUNITAS
 
 GhostWave Studio adalah perangkat lunak open source seutuhnya. Jika Anda ingin
 melihat kode sumber, melaporkan kendala teknis, memberi masukan perbaikan, atau
-berkontribusi kode, silakan kunjungi repository GitHub resmi kami:
+berkontribusi kode, silakan kunjungi repository GitHub resmi saya:
 https://github.com/muhamadalfian20892/GhostWave-Studio

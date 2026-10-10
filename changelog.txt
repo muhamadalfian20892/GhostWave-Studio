@@ -1,5 +1,21 @@
 GhostWave Studio - Changelog & Release Notes
 
+Version: 1.5.0
+Release Date: 2026-10-10
+
+What is new:
+New on 10/10/2026:
+	Fixed an issue where the selected interface language would revert back to default after closing and reopening the application. The configuration resolution logic had a path discrepancy during write operations, and the main window now triggers an immediate localization refresh on startup so your chosen language is active right away.
+	The support ticket details viewer now shows complete ticket metadata at the top of the conversation view, including the ticket ID, subject title, category, status, submission date, and your original problem description instead of only showing replies.
+	If a support ticket has been closed by the developer, the reply text box and send button are now disabled so you cannot accidentally submit replies to a ticket that is already resolved.
+	Updated attribution and statements throughout the application, installer, and documentation to reflect that GhostWave Studio is developed by a single independent developer rather than an organization.
+	Fixed several untranslated labels and tooltips in both the audio processing panel and lyrics cloaking view when running in Indonesian mode.
+	Added an explicit application close handler to guarantee that user preferences, active language, and export settings are flushed to the encrypted profile container upon quitting.
+	Added zero-length buffer and non-positive threshold checks to the soft limiting DSP module to guard against unexpected mathematical domain errors on silent passages.
+	Guarded the Suno audio slicing algorithm against potential infinite division loops when handling very short chunk durations.
+	Safeguarded clipboard write operations with reliable cleanup blocks so the operating system clipboard is never left locked if an unexpected error occurs during copy operations.
+	Improved error parsing in the support ticket client to gracefully handle network timeouts and server responses.
+
 Version: 1.4.0
 Release Date: 2026-10-10
 

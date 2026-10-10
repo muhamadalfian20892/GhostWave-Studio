@@ -92,14 +92,17 @@ def _get_cached_bilinear(w0: float, q_factor: float, fs: int):
 
 def apply_soft_limiting(data: np.ndarray, threshold: float = 0.95, drive_db: float = 0.0) -> np.ndarray:
     """Softly limits peaks that exceed threshold using hyperbolic tangent to avoid digital clipping."""
+    if data is None or data.size == 0:
+        return np.zeros((0,), dtype=np.float32) if data is None else data.astype(np.float32)
+    safe_thresh = max(float(threshold), 1e-4)
     out = data
     if drive_db != 0.0:
         gain = 10.0 ** (drive_db / 20.0)
         out = out * gain
     peak = float(np.max(np.abs(out)))
-    if peak <= threshold:
+    if peak <= safe_thresh:
         return out.astype(np.float32)
-    return (np.tanh(out / threshold) * threshold).astype(np.float32)
+    return (np.tanh(out / safe_thresh) * safe_thresh).astype(np.float32)
 
 
 @dataclass
@@ -953,7 +956,8 @@ def slice_audio_for_suno(
     """
     data, sr = load_audio_samples(input_path, target_sr=44100)
     os.makedirs(output_dir, exist_ok=True)
-    chunk_samples = int(chunk_duration_sec * sr)
+    safe_duration = max(3.0, float(chunk_duration_sec))
+    chunk_samples = max(1, int(safe_duration * sr))
     total_samples = len(data)
 
     output_files = []

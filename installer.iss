@@ -2,8 +2,8 @@
 ; Build standalone Windows installer package
 
 #define MyAppName "GhostWave Studio"
-#define MyAppVersion "1.4.0"
-#define MyAppPublisher "Technokers Lab"
+#define MyAppVersion "1.5.0"
+#define MyAppPublisher "Muhamad Alfian"
 #define MyAppURL "https://github.com/muhamadalfian20892/GhostWave-Studio"
 #define MyAppExeName "GhostWaveStudio.exe"
 #define MyAppCliName "ghostwave-cli.exe"
@@ -21,7 +21,7 @@ DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 LicenseFile=LICENSE
 OutputDir=dist\installer
-OutputBaseFilename=GhostWaveStudio-v1.4.0-Setup
+OutputBaseFilename=GhostWaveStudio-v1.5.0-Setup
 SetupIconFile=ghostwave.ico
 Compression=lzma2/ultra64
 SolidCompression=yes

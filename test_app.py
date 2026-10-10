@@ -393,7 +393,7 @@ class TestGhostWaveUpdater(unittest.TestCase):
 
             # Check changelog text and header labels
             self.assertEqual(dlg.changelog_header_label.GetName(), "Changelog and Release Notes Label")
-            self.assertEqual(dlg.changelog_ctrl.GetName(), "Changelog Text Area")
+            self.assertEqual(dlg.changelog_ctrl.GetName(), "What's new Text Area")
             self.assertTrue(dlg.changelog_ctrl.IsEditable() == False)
 
             # Check action buttons accessibility
@@ -734,11 +734,11 @@ class TestVersion120UpgradesAndPersonas(unittest.TestCase):
         self.assertIn("OS:", diag)
         self.assertIn("App Version: 1.4.0", diag)
 
-    def test_config_manager_v1_4_0(self):
-        """Verifies v1.4.0 configuration fields and ticket persistence."""
+    def test_config_manager_v1_5_0(self):
+        """Verifies v1.5.0 configuration fields and ticket persistence."""
         from config_manager import GhostWaveConfig
         cfg = GhostWaveConfig()
-        self.assertEqual(cfg.app_version, "1.4.0")
+        self.assertEqual(cfg.app_version, "1.5.0")
         self.assertEqual(cfg.language, "en")
         self.assertTrue(cfg.first_run)
         self.assertEqual(len(cfg.user_tickets), 0)

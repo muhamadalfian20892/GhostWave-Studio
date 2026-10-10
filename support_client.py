@@ -25,13 +25,26 @@ def generate_ticket_key() -> str:
     return secrets.token_hex(16)
 
 
-def get_system_diagnostics(app_version: str = "1.4.0") -> str:
+def get_system_diagnostics(app_version: str = "1.5.0") -> str:
     """Collects system details for diagnostic ticket reports."""
+    try:
+        os_info = f"{platform.platform()} ({platform.architecture()[0]})"
+    except Exception:
+        os_info = "Windows (Unknown)"
+    try:
+        py_ver = platform.python_version()
+    except Exception:
+        py_ver = "Unknown"
+    try:
+        mach = platform.machine()
+    except Exception:
+        mach = "x86_64"
+
     lines = [
-        f"OS: {platform.platform()} ({platform.architecture()[0]})",
-        f"Python: {platform.python_version()}",
+        f"OS: {os_info}",
+        f"Python: {py_ver}",
         f"App Version: {app_version}",
-        f"Machine: {platform.machine()}"
+        f"Machine: {mach}"
     ]
     return "\n".join(lines)
 
@@ -40,7 +53,7 @@ def create_ticket(
     category: str,
     title: str,
     description: str,
-    client_version: str = "1.4.0",
+    client_version: str = "1.5.0",
     attach_sys_info: bool = True,
     worker_url: str = DEFAULT_WORKER_URL
 ) -> Tuple[bool, Dict[str, Any], Optional[str]]:
@@ -114,7 +127,7 @@ def fetch_ticket(
     })
     endpoint = f"{worker_url.rstrip('/')}/api/tickets?{query}"
     headers = {
-        "User-Agent": "GhostWave-Studio/1.4.0"
+        "User-Agent": "GhostWave-Studio/1.5.0"
     }
 
     try:
@@ -150,15 +163,19 @@ def reply_to_ticket(
     Submits a follow-up comment to an existing ticket thread.
     Returns: (success_bool, result_dict, error_message_or_none)
     """
+    clean_msg = message.strip()
+    if not clean_msg:
+        return False, {}, "Reply message cannot be empty."
+
     payload = {
         "ticket_id": ticket_id,
         "ticket_key": ticket_key,
-        "message": message.strip()
+        "message": clean_msg
     }
     endpoint = f"{worker_url.rstrip('/')}/api/tickets/reply"
     headers = {
         "Content-Type": "application/json",
-        "User-Agent": "GhostWave-Studio/1.4.0"
+        "User-Agent": "GhostWave-Studio/1.5.0"
     }
 
     try:

@@ -1073,19 +1073,71 @@ class SupportTicketDialog(wx.Dialog):
         if not ticket_data:
             return
         self.active_ticket = ticket_data
-        t_id = ticket_data.get("ticket_id")
-        t_title = ticket_data.get("title")
-        t_status = ticket_data.get("status", "open")
-        status_label = tr("TICKET_STATUS_OPEN") if t_status == "open" else tr("TICKET_STATUS_CLOSED")
-        self.ticket_status_lbl.SetLabel(f"#{t_id} - {t_title} ({status_label})")
+        self._render_ticket_view(loading=True)
         self._refresh_ticket_thread()
+
+    def _render_ticket_view(self, comments: Optional[list] = None, loading: bool = False, err_msg: Optional[str] = None):
+        if not self.active_ticket:
+            return
+        t_id = self.active_ticket.get("ticket_id", "?")
+        t_title = self.active_ticket.get("title", "Untitled")
+        t_cat = self.active_ticket.get("category", "Support")
+        t_status = self.active_ticket.get("status", "open")
+        t_created = self.active_ticket.get("created_at", "")[:19].replace("T", " ")
+        t_desc = (self.active_ticket.get("description") or "").strip() or "(Original description not locally cached)"
+
+        status_text = tr("TICKET_STATUS_OPEN") if t_status == "open" else tr("TICKET_STATUS_CLOSED")
+        is_closed = (t_status == "closed")
+
+        self.reply_ctrl.Enable(not is_closed)
+        self.reply_btn.Enable(not is_closed)
+        if is_closed:
+            self.reply_ctrl.SetToolTip(tr("TICKET_CLOSED_TOOLTIP"))
+            self.ticket_status_lbl.SetLabel(f"#{t_id} - {t_title} ({status_text}) - {tr('TICKET_CLOSED_NOTICE')}")
+        else:
+            self.reply_ctrl.SetToolTip("Enter your reply message here.")
+            self.ticket_status_lbl.SetLabel(f"#{t_id} - {t_title} ({status_text})")
+
+        lines = [
+            tr("TICKET_HEADER_INFO"),
+            tr("TICKET_INFO_ID", id=t_id),
+            tr("TICKET_INFO_TITLE", title=t_title),
+            tr("TICKET_INFO_CATEGORY", category=t_cat),
+            tr("TICKET_INFO_STATUS", status=status_text)
+        ]
+        if t_created:
+            lines.append(tr("TICKET_INFO_CREATED", created_at=t_created))
+        lines.append(tr("TICKET_INFO_DESC", description=t_desc))
+        lines.append("=" * 48)
+        lines.append("")
+        lines.append(tr("TICKET_THREAD_HEADER"))
+
+        if is_closed:
+            lines.append(f"[{tr('TICKET_CLOSED_NOTICE')}]")
+            lines.append("")
+
+        if loading:
+            lines.append("Loading replies from support server...")
+        elif err_msg:
+            lines.append(f"Unable to fetch replies: {err_msg}")
+        elif comments is not None:
+            if not comments:
+                lines.append("No replies yet. Your ticket is currently awaiting developer review.")
+            else:
+                for c in comments:
+                    author = "Developer (Muhamad Alfian)" if c.get("is_admin") else "You"
+                    time_str = c.get("created_at", "")[:19].replace("T", " ")
+                    lines.append(f"[{author}] {time_str}")
+                    lines.append(c.get("body", "").strip())
+                    lines.append("-" * 48)
+
+        self.thread_ctrl.SetValue("\n".join(lines))
 
     def _refresh_ticket_thread(self):
         if not self.active_ticket:
             return
         ticket_id = self.active_ticket.get("ticket_id")
         ticket_key = self.active_ticket.get("ticket_key")
-        self.thread_ctrl.SetValue("Loading replies from support server...")
 
         def worker():
             success, data, err = support_client.fetch_ticket(ticket_id, ticket_key)
@@ -1094,26 +1146,13 @@ class SupportTicketDialog(wx.Dialog):
                 if success:
                     status = data.get("status", "open")
                     self.active_ticket["status"] = status
+                    if not self.active_ticket.get("description") and data.get("description"):
+                        self.active_ticket["description"] = data.get("description")
                     self.config.save()
-                    status_label = tr("TICKET_STATUS_OPEN") if status == "open" else tr("TICKET_STATUS_CLOSED")
-                    self.ticket_status_lbl.SetLabel(
-                        f"#{ticket_id} - {self.active_ticket.get('title')} ({status_label})"
-                    )
-
-                    lines = []
                     comments = data.get("comments", [])
-                    if not comments:
-                        lines.append("No replies yet. Your ticket is currently awaiting developer review.")
-                    else:
-                        for c in comments:
-                            author = "Developer (Muhamad Alfian)" if c.get("is_admin") else "You"
-                            time_str = c.get("created_at", "")[:19].replace("T", " ")
-                            lines.append(f"[{author}] {time_str}")
-                            lines.append(c.get("body", "").strip())
-                            lines.append("-" * 48)
-                    self.thread_ctrl.SetValue("\n\n".join(lines))
+                    self._render_ticket_view(comments=comments)
                 else:
-                    self.thread_ctrl.SetValue(f"Unable to fetch replies: {err}")
+                    self._render_ticket_view(err_msg=err)
 
             wx.CallAfter(done)
 
@@ -1156,6 +1195,7 @@ class SupportTicketDialog(wx.Dialog):
                         "ticket_key": res.get("ticket_key"),
                         "title": title,
                         "category": category,
+                        "description": desc,
                         "status": res.get("status", "open"),
                         "created_at": res.get("created_at", "")
                     }
@@ -1190,6 +1230,16 @@ class SupportTicketDialog(wx.Dialog):
     def on_send_reply(self, event: wx.CommandEvent):
         if not self.active_ticket:
             return
+        if self.active_ticket.get("status") == "closed":
+            wx.Bell()
+            wx.MessageBox(
+                tr("TICKET_CLOSED_NOTICE"),
+                "Ticket Closed",
+                wx.OK | wx.ICON_WARNING,
+                self
+            )
+            return
+
         reply_msg = self.reply_ctrl.GetValue().strip()
         if not reply_msg:
             return
@@ -1459,15 +1509,15 @@ class AudioSanitizerPanel(wx.Panel):
         # -------------------------------------------------------------
         # Section 1: Source Audio Picker
         # -------------------------------------------------------------
-        file_box = wx.StaticBox(self, label="1. Source Audio File")
-        file_box.SetName("Source Audio File Group")
-        file_box_sizer = wx.StaticBoxSizer(file_box, wx.VERTICAL)
+        self.file_box = wx.StaticBox(self, label=tr("AUDIO_GROUP_SOURCE"))
+        self.file_box.SetName("Source Audio File Group")
+        file_box_sizer = wx.StaticBoxSizer(self.file_box, wx.VERTICAL)
 
         picker_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        file_label = wx.StaticText(self, label="Selected File:")
-        file_label.SetName("Selected Audio File Label")
-        picker_sizer.Add(file_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        self.file_label = wx.StaticText(self, label=tr("AUDIO_LABEL_SELECTED_FILE"))
+        self.file_label.SetName("Selected Audio File Label")
+        picker_sizer.Add(self.file_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
 
         self.file_path_ctrl = wx.TextCtrl(
             self,
@@ -1475,10 +1525,10 @@ class AudioSanitizerPanel(wx.Panel):
             name="Selected Audio File Path"
         )
         self.file_path_ctrl.SetToolTip("Full file path of the chosen audio file.")
-        self.file_path_ctrl.SetValue("No audio file selected.")
+        self.file_path_ctrl.SetValue(tr("AUDIO_NO_FILE_SELECTED"))
         picker_sizer.Add(self.file_path_ctrl, 1, wx.EXPAND | wx.RIGHT, 10)
 
-        self.browse_btn = wx.Button(self, label="&Browse Audio File...", name="Browse Audio File Button")
+        self.browse_btn = wx.Button(self, label=f"&{tr('AUDIO_SELECT_BTN')}", name="Browse Audio File Button")
         self.browse_btn.SetToolTip("Open file browser to pick an audio file (Hot key: Alt+B).")
         self.browse_btn.Bind(wx.EVT_BUTTON, self.on_browse)
         picker_sizer.Add(self.browse_btn, 0, wx.ALIGN_CENTER_VERTICAL)
@@ -1487,7 +1537,7 @@ class AudioSanitizerPanel(wx.Panel):
 
         self.file_info_text = wx.StaticText(
             self,
-            label="Audio Specifications: None (Select a file to inspect)",
+            label=tr("AUDIO_SPECS_NONE"),
             name="Audio Specifications Information"
         )
         file_box_sizer.Add(self.file_info_text, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
@@ -1497,15 +1547,15 @@ class AudioSanitizerPanel(wx.Panel):
         # -------------------------------------------------------------
         # Section 2: Sanitization Parameters & Multi-Vector DSP
         # -------------------------------------------------------------
-        param_box = wx.StaticBox(self, label="2. Sanitization Parameters (Acoustic Evasion)")
-        param_box.SetName("Sanitization Parameters Group")
-        param_box_sizer = wx.StaticBoxSizer(param_box, wx.VERTICAL)
+        self.param_box = wx.StaticBox(self, label=tr("AUDIO_GROUP_PARAMS"))
+        self.param_box.SetName("Sanitization Parameters Group")
+        param_box_sizer = wx.StaticBoxSizer(self.param_box, wx.VERTICAL)
 
         # Preset Choice + Cloud Settings Button
         preset_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        preset_label = wx.StaticText(self, label="Evasion Preset:")
-        preset_label.SetName("Evasion Preset Label")
-        preset_sizer.Add(preset_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        self.preset_label = wx.StaticText(self, label=tr("AUDIO_LABEL_PRESET"))
+        self.preset_label.SetName("Evasion Preset Label")
+        preset_sizer.Add(self.preset_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
 
         self.preset_choice = wx.Choice(
             self,
@@ -1524,7 +1574,7 @@ class AudioSanitizerPanel(wx.Panel):
         self.preset_choice.Bind(wx.EVT_CHOICE, self.on_preset_changed)
         preset_sizer.Add(self.preset_choice, 1, wx.EXPAND | wx.RIGHT, 10)
 
-        self.cloud_btn = wx.Button(self, label="Cloud &API Settings...", name="Cloud API Settings Button")
+        self.cloud_btn = wx.Button(self, label=tr("AUDIO_BTN_CLOUD_SETTINGS"), name="Cloud API Settings Button")
         self.cloud_btn.SetToolTip("Configure remote stem separation credentials (Hotkey: Alt+A).")
         self.cloud_btn.Bind(wx.EVT_BUTTON, self.on_cloud_settings)
         preset_sizer.Add(self.cloud_btn, 0, wx.ALIGN_CENTER_VERTICAL)
@@ -1533,9 +1583,9 @@ class AudioSanitizerPanel(wx.Panel):
 
         # Basic Format & Advanced Toggle Row
         format_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        format_label = wx.StaticText(self, label="Export Format & Bitrate:")
-        format_label.SetName("Export Format Label")
-        format_sizer.Add(format_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        self.format_label = wx.StaticText(self, label=tr("AUDIO_LABEL_FORMAT"))
+        self.format_label.SetName("Export Format Label")
+        format_sizer.Add(self.format_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
 
         self.format_choice = wx.Choice(
             self,
@@ -1740,7 +1790,7 @@ class AudioSanitizerPanel(wx.Panel):
 
         self.process_btn = wx.Button(
             self,
-            label="&Process and Export Audio",
+            label=tr("AUDIO_PROCESS_BTN"),
             name="Process and Export Audio Button"
         )
         self.process_btn.SetToolTip("Process the audio file with selected parameters and save output (Hotkey: Alt+P).")
@@ -1749,7 +1799,7 @@ class AudioSanitizerPanel(wx.Panel):
 
         self.cancel_btn = wx.Button(
             self,
-            label="&Cancel Process",
+            label=tr("AUDIO_CANCEL_BTN"),
             name="Cancel Audio Processing Button"
         )
         self.cancel_btn.SetToolTip("Cancel ongoing audio sanitization immediately.")
@@ -1759,7 +1809,7 @@ class AudioSanitizerPanel(wx.Panel):
 
         self.audit_btn = wx.Button(
             self,
-            label="Verify &Evasion Safety (Audit)...",
+            label=tr("AUDIO_BTN_RUN_AUDIT"),
             name="Verify Evasion Safety Button"
         )
         self.audit_btn.SetToolTip("Run quantitative Chromaprint fingerprint audit (Hotkey: Alt+E).")
@@ -2141,23 +2191,61 @@ class AudioSanitizerPanel(wx.Panel):
 
     def retranslate_ui(self):
         """Dynamically retranslates UI labels and tooltips in the Audio Sanitizer tab."""
-        self.browse_btn.SetLabel(f"&{tr('AUDIO_SELECT_BTN')}")
-        self.process_btn.SetLabel(tr("AUDIO_PROCESS_BTN"))
-        if self.adv_panel.IsShown():
-            self.toggle_adv_btn.SetLabel(tr("AUDIO_HIDE_ADVANCED_BTN"))
-        else:
-            self.toggle_adv_btn.SetLabel(tr("AUDIO_SHOW_ADVANCED_BTN"))
+        if hasattr(self, "file_box"):
+            self.file_box.SetLabel(tr("AUDIO_GROUP_SOURCE"))
+        if hasattr(self, "file_label"):
+            self.file_label.SetLabel(tr("AUDIO_LABEL_SELECTED_FILE"))
+        if hasattr(self, "browse_btn"):
+            self.browse_btn.SetLabel(f"&{tr('AUDIO_SELECT_BTN')}")
+        if hasattr(self, "file_path_ctrl") and (not self.selected_file_path or self.file_path_ctrl.GetValue() in ("No audio file selected.", "Belum ada berkas audio yang dipilih.")):
+            self.file_path_ctrl.SetValue(tr("AUDIO_NO_FILE_SELECTED"))
+        if hasattr(self, "file_info_text") and not self.selected_file_path:
+            self.file_info_text.SetLabel(tr("AUDIO_SPECS_NONE"))
 
-        self.jitter_chk.SetLabel(tr("AUDIO_CHRONO_JITTER"))
-        self.bode_chk.SetLabel(tr("AUDIO_BODE_SHIFT"))
-        self.decoy_chk.SetLabel(tr("AUDIO_ADVERSARIAL_PEAKS"))
-        self.allpass_chk.SetLabel(tr("AUDIO_PHASE_DISPERSION"))
-        self.reamping_chk.SetLabel(tr("AUDIO_REAMP_ROOM"))
-        self.vocal_chk.SetLabel(tr("AUDIO_VOCAL_CUT"))
-        self.filter_chk.SetLabel(tr("AUDIO_EQ_FILTERS"))
-        self.dither_chk.SetLabel(tr("AUDIO_DITHER"))
-        self.trim_chk.SetLabel(tr("AUDIO_TRIM_CLIP"))
-        self.metadata_chk.SetLabel(tr("AUDIO_STRIP_METADATA"))
+        if hasattr(self, "param_box"):
+            self.param_box.SetLabel(tr("AUDIO_GROUP_PARAMS"))
+        if hasattr(self, "preset_label"):
+            self.preset_label.SetLabel(tr("AUDIO_LABEL_PRESET"))
+        if hasattr(self, "cloud_btn"):
+            self.cloud_btn.SetLabel(tr("AUDIO_BTN_CLOUD_SETTINGS"))
+        if hasattr(self, "format_label"):
+            self.format_label.SetLabel(tr("AUDIO_LABEL_FORMAT"))
+
+        if hasattr(self, "toggle_adv_btn"):
+            if self.adv_panel.IsShown():
+                self.toggle_adv_btn.SetLabel(tr("AUDIO_HIDE_ADVANCED_BTN"))
+            else:
+                self.toggle_adv_btn.SetLabel(tr("AUDIO_SHOW_ADVANCED_BTN"))
+
+        if hasattr(self, "jitter_chk"):
+            self.jitter_chk.SetLabel(tr("AUDIO_CHRONO_JITTER"))
+        if hasattr(self, "bode_chk"):
+            self.bode_chk.SetLabel(tr("AUDIO_BODE_SHIFT"))
+        if hasattr(self, "decoy_chk"):
+            self.decoy_chk.SetLabel(tr("AUDIO_ADVERSARIAL_PEAKS"))
+        if hasattr(self, "allpass_chk"):
+            self.allpass_chk.SetLabel(tr("AUDIO_PHASE_DISPERSION"))
+        if hasattr(self, "reamping_chk"):
+            self.reamping_chk.SetLabel(tr("AUDIO_REAMP_ROOM"))
+        if hasattr(self, "vocal_chk"):
+            self.vocal_chk.SetLabel(tr("AUDIO_VOCAL_CUT"))
+        if hasattr(self, "preamble_chk"):
+            self.preamble_chk.SetLabel(tr("AUDIO_INJECT_PREAMBLE"))
+        if hasattr(self, "filter_chk"):
+            self.filter_chk.SetLabel(tr("AUDIO_EQ_FILTERS"))
+        if hasattr(self, "dither_chk"):
+            self.dither_chk.SetLabel(tr("AUDIO_DITHER"))
+        if hasattr(self, "metadata_chk"):
+            self.metadata_chk.SetLabel(tr("AUDIO_STRIP_METADATA"))
+        if hasattr(self, "trim_chk"):
+            self.trim_chk.SetLabel(tr("AUDIO_TRIM_CLIP"))
+
+        if hasattr(self, "process_btn"):
+            self.process_btn.SetLabel(tr("AUDIO_PROCESS_BTN"))
+        if hasattr(self, "cancel_btn"):
+            self.cancel_btn.SetLabel(tr("AUDIO_CANCEL_BTN"))
+        if hasattr(self, "audit_btn"):
+            self.audit_btn.SetLabel(tr("AUDIO_BTN_RUN_AUDIT"))
 
 
 class LyricsSanitizerPanel(wx.Panel):
@@ -2178,9 +2266,9 @@ class LyricsSanitizerPanel(wx.Panel):
 
         # Section 1: Original Lyrics Input
         in_header_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        in_label = wx.StaticText(self, label="1. Original Lyrics Input:")
-        in_label.SetName("Original Lyrics Input Label")
-        in_header_sizer.Add(in_label, 0, wx.ALIGN_CENTER_VERTICAL)
+        self.in_label = wx.StaticText(self, label=tr("LYRICS_INPUT_LABEL"))
+        self.in_label.SetName("Original Lyrics Input Label")
+        in_header_sizer.Add(self.in_label, 0, wx.ALIGN_CENTER_VERTICAL)
         in_header_sizer.AddStretchSpacer()
 
         self.input_stats_label = wx.StaticText(
@@ -2202,9 +2290,9 @@ class LyricsSanitizerPanel(wx.Panel):
         main_sizer.Add(self.input_text_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         # Section 2: Moderation Filters & Structural Standards
-        rules_box = wx.StaticBox(self, label="2. Moderation Filters & Structural Standards")
-        rules_box.SetName("Moderation Rules Group")
-        rules_box_sizer = wx.StaticBoxSizer(rules_box, wx.VERTICAL)
+        self.rules_box = wx.StaticBox(self, label=tr("LYRICS_GROUP_INPUT"))
+        self.rules_box.SetName("Moderation Rules Group")
+        rules_box_sizer = wx.StaticBoxSizer(self.rules_box, wx.VERTICAL)
 
         celeb_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.celeb_chk = wx.CheckBox(
@@ -2265,9 +2353,9 @@ class LyricsSanitizerPanel(wx.Panel):
         main_sizer.Add(rules_box_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
         # Section 3: Copyright Evasion & Lyrics Cloaking Engine
-        cloak_box = wx.StaticBox(self, label="3. Copyright Evasion & Lyrics Cloaking Engine")
-        cloak_box.SetName("Lyrics Cloaking Group")
-        cloak_box_sizer = wx.StaticBoxSizer(cloak_box, wx.VERTICAL)
+        self.cloak_box = wx.StaticBox(self, label=tr("LYRICS_GROUP_OUTPUT"))
+        self.cloak_box.SetName("Lyrics Cloaking Group")
+        cloak_box_sizer = wx.StaticBoxSizer(self.cloak_box, wx.VERTICAL)
 
         self.cloak_chk = wx.CheckBox(
             self,
@@ -2279,7 +2367,7 @@ class LyricsSanitizerPanel(wx.Panel):
         cloak_box_sizer.Add(self.cloak_chk, 0, wx.ALL, 4)
 
         mode_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        mode_lbl = wx.StaticText(self, label="Cloaking Strategy:")
+        self.mode_lbl = wx.StaticText(self, label=tr("LYRICS_MODE_LABEL"))
         mode_lbl.SetName("Cloaking Strategy Label")
         mode_sizer.Add(mode_lbl, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
 
@@ -2384,9 +2472,9 @@ class LyricsSanitizerPanel(wx.Panel):
         # Section 5: Sanitized Output & Changes Made Log
         out_splitter = wx.BoxSizer(wx.VERTICAL)
 
-        out_label = wx.StaticText(self, label="4. Sanitized & Cloaked Lyrics Output:")
-        out_label.SetName("Sanitized Lyrics Output Label")
-        out_splitter.Add(out_label, 0, wx.BOTTOM, 4)
+        self.out_label = wx.StaticText(self, label=tr("LYRICS_OUTPUT_LABEL"))
+        self.out_label.SetName("Sanitized Lyrics Output Label")
+        out_splitter.Add(self.out_label, 0, wx.BOTTOM, 4)
 
         self.output_text_ctrl = wx.TextCtrl(
             self,
@@ -2397,7 +2485,7 @@ class LyricsSanitizerPanel(wx.Panel):
         self.output_text_ctrl.SetToolTip("Final cloaked lyrics ready to paste into Suno AI.")
         out_splitter.Add(self.output_text_ctrl, 1, wx.EXPAND | wx.BOTTOM, 8)
 
-        changes_label = wx.StaticText(self, label="Changes Made & Copyright Evasion Audit:")
+        self.changes_label = wx.StaticText(self, label=tr("LYRICS_GROUP_AUDIT"))
         changes_label.SetName("Changes Made Label")
         out_splitter.Add(changes_label, 0, wx.BOTTOM, 4)
 
@@ -2551,29 +2639,80 @@ class LyricsSanitizerPanel(wx.Panel):
             )
             return
 
-        if wx.TheClipboard.Open():
-            wx.TheClipboard.SetData(wx.TextDataObject(sanitized_text))
-            wx.TheClipboard.Close()
-            self.set_status("Sanitized lyrics copied to clipboard!")
-            wx.Bell()
-            wx.MessageBox(
-                "Sanitized lyrics copied to system clipboard successfully!",
-                "Copied",
-                wx.OK | wx.ICON_INFORMATION,
-                self
-            )
-        else:
-            wx.MessageBox(
-                "Unable to open system clipboard.",
-                "Clipboard Error",
-                wx.OK | wx.ICON_ERROR,
-                self
-            )
+        try:
+            if wx.TheClipboard.Open():
+                try:
+                    wx.TheClipboard.SetData(wx.TextDataObject(sanitized_text))
+                    self.set_status("Sanitized lyrics copied to clipboard!")
+                    wx.Bell()
+                    wx.MessageBox(
+                        "Sanitized lyrics copied to system clipboard successfully!",
+                        "Copied",
+                        wx.OK | wx.ICON_INFORMATION,
+                        self
+                    )
+                finally:
+                    wx.TheClipboard.Close()
+            else:
+                wx.MessageBox(
+                    "Unable to open system clipboard.",
+                    "Clipboard Error",
+                    wx.OK | wx.ICON_ERROR,
+                    self
+                )
+        except Exception as e:
+            wx.MessageBox(f"Clipboard error: {e}", "Error", wx.OK | wx.ICON_ERROR, self)
 
     def retranslate_ui(self):
         """Dynamically retranslates UI labels in the Lyrics Sanitizer tab."""
-        self.sanitize_btn.SetLabel(tr("LYRICS_PROCESS_BTN"))
-        self.copy_btn.SetLabel(tr("LYRICS_COPY_BTN"))
+        if hasattr(self, "in_label"):
+            self.in_label.SetLabel(tr("LYRICS_INPUT_LABEL"))
+        if hasattr(self, "rules_box"):
+            self.rules_box.SetLabel(tr("LYRICS_GROUP_INPUT"))
+        if hasattr(self, "sample_btn"):
+            self.sample_btn.SetLabel(tr("LYRICS_BTN_LOAD_SAMPLE"))
+        if hasattr(self, "clear_btn"):
+            self.clear_btn.SetLabel(tr("LYRICS_BTN_CLEAR"))
+
+        if hasattr(self, "celeb_chk"):
+            self.celeb_chk.SetLabel(tr("LYRICS_CHK_CELEB"))
+        if hasattr(self, "edit_blacklist_btn"):
+            self.edit_blacklist_btn.SetLabel(tr("LYRICS_BTN_EDIT_BLACKLIST"))
+        if hasattr(self, "profanity_chk"):
+            self.profanity_chk.SetLabel(tr("LYRICS_CHK_PROFANITY"))
+        if hasattr(self, "unicode_chk"):
+            self.unicode_chk.SetLabel(tr("LYRICS_CHK_UNICODE"))
+        if hasattr(self, "tags_chk"):
+            self.tags_chk.SetLabel(tr("LYRICS_CHK_TAGS"))
+        if hasattr(self, "length_chk"):
+            self.length_chk.SetLabel(tr("LYRICS_CHK_LIMITS"))
+
+        if hasattr(self, "cloak_box"):
+            self.cloak_box.SetLabel(tr("LYRICS_GROUP_OUTPUT"))
+        if hasattr(self, "cloak_chk"):
+            self.cloak_chk.SetLabel(tr("LYRICS_CHK_CLOAK"))
+        if hasattr(self, "mode_lbl"):
+            self.mode_lbl.SetLabel(tr("LYRICS_MODE_LABEL"))
+        if hasattr(self, "cloud_llm_btn"):
+            self.cloud_llm_btn.SetLabel(tr("LYRICS_BTN_CLOUD_LLM"))
+
+        if hasattr(self, "vibrato_chk"):
+            self.vibrato_chk.SetLabel(tr("LYRICS_ADD_VIBRATO"))
+        if hasattr(self, "syllable_chk"):
+            self.syllable_chk.SetLabel(tr("LYRICS_PRESERVE_SYLLABLES"))
+        if hasattr(self, "ngram_chk"):
+            self.ngram_chk.SetLabel(tr("LYRICS_BREAK_NGRAMS"))
+
+        if hasattr(self, "out_label"):
+            self.out_label.SetLabel(tr("LYRICS_OUTPUT_LABEL"))
+        if hasattr(self, "changes_label"):
+            self.changes_label.SetLabel(tr("LYRICS_GROUP_AUDIT"))
+
+        if hasattr(self, "sanitize_btn"):
+            self.sanitize_btn.SetLabel(tr("LYRICS_PROCESS_BTN"))
+        if hasattr(self, "copy_btn"):
+            self.copy_btn.SetLabel(tr("LYRICS_COPY_BTN"))
+
         self.on_input_text_changed(None)
 
 
@@ -2632,6 +2771,12 @@ class GhostWaveFrame(wx.Frame):
 
         self.Centre()
 
+        # Bind close handler to persist active configuration
+        self.Bind(wx.EVT_CLOSE, self.on_close)
+
+        # Apply active language translations to all menus, labels, and tabs immediately
+        self.retranslate_ui()
+
         # Background update check if enabled in encrypted config vault
         try:
             cfg = GhostWaveConfig.load()
@@ -2640,21 +2785,35 @@ class GhostWaveFrame(wx.Frame):
         except Exception:
             pass
 
+    def on_close(self, event: wx.CloseEvent):
+        """Safely saves active language and UI state into encrypted vault on exit."""
+        try:
+            cfg = GhostWaveConfig.load()
+            cfg.language = get_language()
+            if hasattr(self, "audio_tab") and hasattr(self.audio_tab, "preset_choice"):
+                cfg.default_preset = self.audio_tab.preset_choice.GetStringSelection()
+                fmt_idx = self.audio_tab.format_choice.GetSelection()
+                cfg.export_format = "wav" if fmt_idx == 0 else ("320k" if fmt_idx == 1 else "192k")
+            cfg.save()
+        except Exception:
+            pass
+        event.Skip()
+
     def _build_menu(self):
         self.menu_bar = wx.MenuBar()
 
         # File Menu
         self.file_menu = wx.Menu()
-        self.open_item = self.file_menu.Append(wx.ID_OPEN, "&Browse Audio File...\tCtrl+O", "Select an audio file for processing")
+        self.open_item = self.file_menu.Append(wx.ID_OPEN, tr("MENU_BROWSE_AUDIO"), "Select an audio file for processing")
         self.file_menu.AppendSeparator()
         self.export_profile_item = self.file_menu.Append(
             wx.ID_ANY,
-            "&Export Encrypted Profile (.sn)...\tCtrl+Shift+S",
+            tr("MENU_EXPORT_PROFILE"),
             "Export all settings and API tokens into an encrypted .sn vault"
         )
         self.import_profile_item = self.file_menu.Append(
             wx.ID_ANY,
-            "&Import Encrypted Profile (.sn)...\tCtrl+Shift+O",
+            tr("MENU_IMPORT_PROFILE"),
             "Load and decrypt configuration from a .sn vault"
         )
         self.file_menu.AppendSeparator()
@@ -2663,20 +2822,20 @@ class GhostWaveFrame(wx.Frame):
 
         # Edit Menu
         self.edit_menu = wx.Menu()
-        self.blacklist_item = self.edit_menu.Append(wx.ID_ANY, "Edit Celebrity &Blacklist...\tCtrl+B", "Open the celebrity blacklist editor")
-        self.copy_item = self.edit_menu.Append(wx.ID_COPY, "&Copy Sanitized Lyrics\tCtrl+Shift+C", "Copy sanitized lyrics to clipboard")
-        self.menu_bar.Append(self.edit_menu, "&Edit")
+        self.blacklist_item = self.edit_menu.Append(wx.ID_ANY, tr("MENU_BLACKLIST"), "Open the celebrity blacklist editor")
+        self.copy_item = self.edit_menu.Append(wx.ID_COPY, tr("MENU_COPY_LYRICS"), "Copy sanitized lyrics to clipboard")
+        self.menu_bar.Append(self.edit_menu, tr("MENU_EDIT"))
 
         # Actions Menu
         self.action_menu = wx.Menu()
-        self.process_audio_item = self.action_menu.Append(wx.ID_ANY, "&Process Audio\tCtrl+P", "Execute audio sanitization")
-        self.audit_item = self.action_menu.Append(wx.ID_ANY, "Run &Evasion Audit...\tCtrl+E", "Run Chromaprint acoustic audit")
-        self.slicer_item = self.action_menu.Append(wx.ID_ANY, "ABS Audio &Slicer...\tCtrl+U", "Slice audio into safe 20-24s WAV chunks")
-        self.protocol_item = self.action_menu.Append(wx.ID_ANY, "GhostWave Stealth &Protocol...\tCtrl+H", "View Suno upload protocol and cheat sheet")
-        self.cloud_item = self.action_menu.Append(wx.ID_ANY, "Cloud &API Settings (Vault)...\tCtrl+K", "Configure Cloud stem separation credentials")
+        self.process_audio_item = self.action_menu.Append(wx.ID_ANY, tr("MENU_PROCESS_AUDIO"), "Execute audio sanitization")
+        self.audit_item = self.action_menu.Append(wx.ID_ANY, tr("MENU_AUDIT"), "Run Chromaprint acoustic audit")
+        self.slicer_item = self.action_menu.Append(wx.ID_ANY, tr("MENU_SLICER"), "Slice audio into safe 20-24s WAV chunks")
+        self.protocol_item = self.action_menu.Append(wx.ID_ANY, tr("MENU_PROTOCOL"), "View Suno upload protocol and cheat sheet")
+        self.cloud_item = self.action_menu.Append(wx.ID_ANY, tr("MENU_CLOUD_SETTINGS"), "Configure Cloud stem separation credentials")
         self.action_menu.AppendSeparator()
-        self.sanitize_lyrics_item = self.action_menu.Append(wx.ID_ANY, "&Sanitize Lyrics\tCtrl+S", "Execute lyrics sanitization")
-        self.menu_bar.Append(self.action_menu, "&Actions")
+        self.sanitize_lyrics_item = self.action_menu.Append(wx.ID_ANY, tr("MENU_SANITIZE_LYRICS"), "Execute lyrics sanitization")
+        self.menu_bar.Append(self.action_menu, tr("MENU_ACTIONS"))
 
         # Language Menu
         self.lang_menu = wx.Menu()
@@ -2691,9 +2850,9 @@ class GhostWaveFrame(wx.Frame):
 
         # Help Menu
         self.help_menu = wx.Menu()
-        self.protocol_help_item = self.help_menu.Append(wx.ID_ANY, "Stealth &Upload Protocol && Cheat Sheet...\tShift+F1", "View battle-tested Suno upload cheat sheet")
+        self.protocol_help_item = self.help_menu.Append(wx.ID_ANY, tr("MENU_PROTOCOL_HELP"), "View battle-tested Suno upload cheat sheet")
         self.ticket_item = self.help_menu.Append(wx.ID_ANY, tr("MENU_SUPPORT_TICKETS"), "Open support center and submit tickets")
-        self.check_update_item = self.help_menu.Append(wx.ID_ANY, tr("MENU_CHECK_UPDATES"), "Check GitHub for latest release and changelog")
+        self.check_update_item = self.help_menu.Append(wx.ID_ANY, tr("MENU_CHECK_UPDATES"), "Check for application updates")
         self.a11y_item = self.help_menu.Append(wx.ID_HELP, tr("MENU_ACCESSIBILITY_GUIDE"), "View screen reader accessibility shortcuts")
         self.about_item = self.help_menu.Append(wx.ID_ABOUT, f"{tr('MENU_ABOUT')} v{APP_VERSION}", "About this application")
         self.menu_bar.Append(self.help_menu, tr("MENU_HELP"))
@@ -2738,18 +2897,34 @@ class GhostWaveFrame(wx.Frame):
     def retranslate_ui(self):
         self.SetTitle(f"{tr('APP_TITLE')} v{APP_VERSION} - {tr('APP_SUBTITLE')}")
         self.menu_bar.SetMenuLabel(0, tr("MENU_FILE"))
-        self.menu_bar.SetMenuLabel(1, "&Edit")
-        self.menu_bar.SetMenuLabel(2, "&Actions")
+        self.menu_bar.SetMenuLabel(1, tr("MENU_EDIT"))
+        self.menu_bar.SetMenuLabel(2, tr("MENU_ACTIONS"))
         self.menu_bar.SetMenuLabel(3, tr("MENU_LANGUAGE"))
         self.menu_bar.SetMenuLabel(4, tr("MENU_HELP"))
 
+        self.open_item.SetItemLabel(tr("MENU_BROWSE_AUDIO"))
+        self.export_profile_item.SetItemLabel(tr("MENU_EXPORT_PROFILE"))
+        self.import_profile_item.SetItemLabel(tr("MENU_IMPORT_PROFILE"))
         self.exit_item.SetItemLabel(tr("MENU_EXIT"))
+
+        self.blacklist_item.SetItemLabel(tr("MENU_BLACKLIST"))
+        self.copy_item.SetItemLabel(tr("MENU_COPY_LYRICS"))
+
+        self.process_audio_item.SetItemLabel(tr("MENU_PROCESS_AUDIO"))
+        self.audit_item.SetItemLabel(tr("MENU_AUDIT"))
+        self.slicer_item.SetItemLabel(tr("MENU_SLICER"))
+        self.protocol_item.SetItemLabel(tr("MENU_PROTOCOL"))
+        self.cloud_item.SetItemLabel(tr("MENU_CLOUD_SETTINGS"))
+        self.sanitize_lyrics_item.SetItemLabel(tr("MENU_SANITIZE_LYRICS"))
+
         self.lang_en_item.SetItemLabel(tr("MENU_LANG_EN"))
         self.lang_id_item.SetItemLabel(tr("MENU_LANG_ID"))
+
+        self.protocol_help_item.SetItemLabel(tr("MENU_PROTOCOL_HELP"))
+        self.ticket_item.SetItemLabel(tr("MENU_SUPPORT_TICKETS"))
+        self.check_update_item.SetItemLabel(tr("MENU_CHECK_UPDATES"))
         self.a11y_item.SetItemLabel(tr("MENU_ACCESSIBILITY_GUIDE"))
         self.about_item.SetItemLabel(f"{tr('MENU_ABOUT')} v{APP_VERSION}")
-        self.check_update_item.SetItemLabel(tr("MENU_CHECK_UPDATES"))
-        self.ticket_item.SetItemLabel(tr("MENU_SUPPORT_TICKETS"))
 
         self.notebook.SetPageText(0, tr("TAB_AUDIO"))
         self.notebook.SetPageText(1, tr("TAB_LYRICS"))

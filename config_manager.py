@@ -55,7 +55,7 @@ class GhostWaveConfig:
     """
     # Metadata
     app_name: str = "GhostWave Studio"
-    app_version: str = "1.4.0"
+    app_version: str = "1.5.0"
     check_updates_on_startup: bool = True
     language: str = "en"
     first_run: bool = True
@@ -257,7 +257,7 @@ def resolve_config_path(explicit_path: Optional[str] = None, for_writing: bool =
     Resolves the active .sn configuration path.
     Priority:
     1. Explicitly provided path.
-    2. Local directory 'ghostwave.sn' if it exists (or when writing if explicit).
+    2. Local directory 'ghostwave.sn' if it exists.
     3. User home directory '~/.ghostwave.sn'.
     """
     if explicit_path:
@@ -266,7 +266,7 @@ def resolve_config_path(explicit_path: Optional[str] = None, for_writing: bool =
             p = f"{p}.sn"
         return p
 
-    if os.path.exists(LOCAL_SN_PATH) and not for_writing:
+    if os.path.exists(LOCAL_SN_PATH):
         return LOCAL_SN_PATH
 
     return DEFAULT_USER_SN_PATH

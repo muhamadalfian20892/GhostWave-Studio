@@ -1,11 +1,11 @@
-GHOSTWAVE STUDIO (VERSION 1.4.0)
+GHOSTWAVE STUDIO (VERSION 1.5.0)
 USER GUIDE AND GETTING STARTED MANUAL
 
 Original Website: http://technokerslab.blogspot.com/
 
 Welcome to GhostWave Studio! If you are looking for an easy, no-nonsense way
 to prepare your audio tracks and lyrics for platforms like Suno without running
-into automated upload blocks, you are in the right place. We designed this
+into automated upload blocks, you are in the right place. I designed this
 program so you do not need to know anything about coding, command lines, or
 signal processing to get great results.
 
@@ -51,11 +51,11 @@ from inside the application without needing a browser.
 2. Choose your ticket category from the list: Bug Report, Feature Request, Question
 and Support, or Other.
 3. Type in a subject and detailed description of the situation.
-4. Leave the system diagnostics box checked so our developer can see your operating
+4. Leave the system diagnostics box checked so I can see your operating
 system details and app version to fix the problem quickly.
 5. Click Submit Ticket.
 
-Your ticket is securely delivered to our private repository. You can check the
+Your ticket is securely delivered to my end. You can check the
 "My Tickets" tab at any time to read replies from the developer and send follow-up
 messages directly in the dialog.
 
@@ -82,7 +82,7 @@ simulation, click the "Show Advanced Settings" button to expand those controls.
 
 Step 3: Process and export your file.
 Click "Process and Export Audio" or press Alt+P. Choose where you want to save
-the new file. We strongly recommend saving your file as 16-bit PCM WAV. The
+the new file. I strongly recommend saving your file as 16-bit PCM WAV. The
 progress bar will fill up as each stage runs, and when it finishes, you will get
 a clean audio file that is ready to upload. If you ever need to stop halfway
 through, simply click the "Cancel Process" button.
@@ -90,7 +90,7 @@ through, simply click the "Cancel Process" button.
 
 THE SECRET TO UPLOADING TO SUNO WITHOUT GETTING BLOCKED
 
-Over months of testing, we discovered that how you upload your file to Suno
+Over months of testing, I discovered that how you upload your file to Suno
 matters just as much as what is inside the audio. Keep these four golden rules
 in mind:
 
@@ -170,7 +170,7 @@ Escape: Close any dialog immediately.
 KEEPING GHOSTWAVE STUDIO UPDATED
 
 You do not need to keep checking websites to see if a new version came out.
-Whenever you launch GhostWave Studio, it can check GitHub quietly in the
+Whenever you launch GhostWave Studio, it can check the update by itself quietly in the
 background. If an update is available, a friendly window will appear asking if
 you would like to download it.
 
@@ -183,5 +183,5 @@ OPEN SOURCE AND COMMUNITY CONTRIBUTION
 
 GhostWave Studio is completely open source software. If you would like to inspect
 the source code, submit bug reports, suggest improvements, or contribute code,
-please visit our official GitHub repository:
+please visit my official GitHub repository:
 https://github.com/muhamadalfian20892/GhostWave-Studio

@@ -25,11 +25,11 @@ from typing import Callable, Optional
 import wx
 
 
-APP_VERSION = "1.4.0"
+APP_VERSION = "1.5.0"
 GITHUB_REPO = "muhamadalfian20892/GhostWave-Studio"
 GITHUB_API_LATEST = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 GITHUB_RAW_CHANGELOG = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/changelog.txt"
-DEFAULT_USER_AGENT = "GhostWave-Studio-Updater/1.4"
+DEFAULT_USER_AGENT = "GhostWave-Studio-Updater/1.5"
 
 
 def normalize_version(v_str: str) -> tuple[int, ...]:
@@ -206,7 +206,7 @@ def check_for_updates(
             api_success = True
     except urllib.error.HTTPError as http_err:
         # HTTP 403 or 404 might indicate rate limiting or pending release
-        info.error_message = f"GitHub API error: {http_err.code} {http_err.reason}"
+        info.error_message = f"API error: {http_err.code} {http_err.reason}"
     except Exception as exc:
         info.error_message = f"Connection failed: {str(exc)}"
 
@@ -241,7 +241,7 @@ class UpdateDialog(wx.Dialog):
     def __init__(self, parent: Optional[wx.Window], update_info: UpdateInfo):
         super().__init__(
             parent,
-            title="Software Update - GhostWave Studio",
+            title="Update available! - GhostWave Studio",
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(560, 240)
         )
@@ -281,7 +281,7 @@ class UpdateDialog(wx.Dialog):
 
         self.changelog_header_label = wx.StaticText(
             self.changelog_panel,
-            label="&Changelog and release notes:"
+            label="&What's new:"
         )
         self.changelog_header_label.SetName("Changelog and Release Notes Label")
         changelog_sizer.Add(self.changelog_header_label, 0, wx.BOTTOM, 6)
@@ -291,9 +291,9 @@ class UpdateDialog(wx.Dialog):
             self.changelog_panel,
             value=initial_notes,
             style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_DONTWRAP | wx.BORDER_THEME,
-            name="Changelog Text Area"
+            name="What's new Text Area"
         )
-        self.changelog_ctrl.SetName("Changelog Text Area")
+        self.changelog_ctrl.SetName("What's new Text Area")
         self.changelog_ctrl.SetToolTip("Read-only view of changes and release notes for this update.")
         changelog_sizer.Add(self.changelog_ctrl, 1, wx.EXPAND)
 
@@ -393,7 +393,7 @@ class UpdateDownloadDialog(wx.Dialog):
 
         self.status_label = wx.StaticText(
             panel,
-            label=f"Downloading GhostWave Studio v{self.version} from GitHub..."
+            label=f"Downloading GhostWave Studio v{self.version}..."
         )
         self.status_label.SetName("Download Status Description")
         main_sizer.Add(self.status_label, 0, wx.ALL, 12)
@@ -405,7 +405,7 @@ class UpdateDownloadDialog(wx.Dialog):
 
         self.progress_label = wx.StaticText(
             panel,
-            label="Connecting to GitHub release servers..."
+            label="Pulling update..."
         )
         self.progress_label.SetName("Download Progress Details Label")
         main_sizer.Add(self.progress_label, 0, wx.ALL, 12)
@@ -503,7 +503,7 @@ class UpdateDownloadDialog(wx.Dialog):
     def _on_download_failed(self):
         err = self.error_message or "Unknown download error."
         wx.MessageBox(
-            f"Failed to download update from GitHub:\n\n{err}",
+            f"Failed to download update:\n\n{err}",
             "Download Error",
             wx.OK | wx.ICON_ERROR,
             self
@@ -541,7 +541,6 @@ def run_update_flow(parent: Optional[wx.Window], info: UpdateInfo):
                 # Prompt to launch installer
                 msg = (
                     f"Update package downloaded successfully!\n\n"
-                    f"File: {saved_path}\n\n"
                     f"Do you want to run the installer now?\n"
                     f"(GhostWave Studio will close to allow installation.)"
                 )
@@ -598,7 +597,7 @@ def check_updates_background(
             elif not silent:
                 if info.error_message:
                     wx.MessageBox(
-                        f"Could not connect to GitHub to check for updates.\n\n"
+                        f"Could not check the updates.\n\n"
                         f"Error: {info.error_message}\n\n"
                         f"Please check your internet connection.",
                         "Update Check Failed",
@@ -608,7 +607,7 @@ def check_updates_background(
                 else:
                     wx.MessageBox(
                         f"You are running the latest version of GhostWave Studio (v{current_version}).\n\n"
-                        f"No updates are currently available on GitHub.",
+                        f"No updates are currently available",
                         "GhostWave Studio Up to Date",
                         wx.OK | wx.ICON_INFORMATION,
                         parent

@@ -725,10 +725,11 @@ class RemoteLyricsRewriter:
         model: str = "llama-3.3-70b-versatile",
         custom_endpoint: str = ""
     ) -> Tuple[str, list[str]]:
-        if not api_token:
+        clean_token = (api_token or "").strip()
+        if not clean_token:
             return text, ["Remote API token not provided. Using offline cloaker."]
 
-        endpoint = custom_endpoint or cls.ENDPOINTS.get(provider.lower(), cls.ENDPOINTS["groq"])
+        endpoint = custom_endpoint.strip() or cls.ENDPOINTS.get(provider.lower(), cls.ENDPOINTS["groq"])
         system_prompt = (
             "You are an acoustic and lyric cloaking assistant for signal processing study.\n"
             "Your task is to rewrite song lyrics so they will NOT match commercial lyrics databases (0% contiguous 4-word overlap).\n"
@@ -753,8 +754,8 @@ class RemoteLyricsRewriter:
             data=json.dumps(payload).encode("utf-8"),
             headers={
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_token}",
-                "User-Agent": "GhostWaveStudio/1.0"
+                "Authorization": f"Bearer {clean_token}",
+                "User-Agent": "GhostWaveStudio/1.5.0"
             },
             method="POST"
         )
@@ -766,6 +767,13 @@ class RemoteLyricsRewriter:
                 content = re.sub(r"^```[a-zA-Z]*\n?", "", content)
                 content = re.sub(r"\n?```$", "", content).strip()
                 return content, [f"Remote cloaking succeeded via {provider} ({model})."]
+        except urllib.error.HTTPError as he:
+            try:
+                err_body = json.loads(he.read().decode("utf-8"))
+                err_detail = err_body.get("error", {}).get("message", f"HTTP {he.code}")
+            except Exception:
+                err_detail = f"HTTP {he.code}: {he.reason}"
+            return text, [f"Remote API request failed: {err_detail}. Falling back to offline cloaking."]
         except Exception as e:
             return text, [f"Remote API request failed: {e}. Falling back to offline cloaking."]
 
