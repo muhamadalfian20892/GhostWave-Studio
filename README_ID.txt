@@ -1,4 +1,4 @@
-GHOSTWAVE STUDIO (VERSI 1.5.0)
+GHOSTWAVE STUDIO (VERSI 1.5.1)
 PANDUAN PENGGUNA DAN PETUNJUK MEMULAI
 
 Situs Web Asli: http://technokerslab.blogspot.com/
@@ -72,20 +72,20 @@ tersebut dan menampilkan durasi, frekuensi sampel, serta formatnya langsung di
 layar. Anda juga bisa langsung menyeret dan menjatuhkan file lagu dari File Explorer
 ke dalam jendela aplikasi!
 
-Langkah 2: Pilih preset penyamaran.
-Bagi sebagian besar pengguna, preset bawaan "Zero-Match Nuclear Cloak" memberikan
+Langkah 2: Pilih preset sanitasi.
+Bagi sebagian besar pengguna, preset bawaan "Complete Sanitization" memberikan
 tingkat perlindungan tertinggi. Jika Anda ingin suara lagu tetap sangat mendekati
-rekaman asli, Anda bisa memilih preset "Balanced Quality & Evasion" dari menu pilihan.
+rekaman asli, Anda bisa memilih preset "Balanced Audio Quality" dari menu pilihan.
 Jika Anda tidak ingin pusing dengan angka teknis, abaikan saja opsi lanjutan.
 Namun jika Anda ingin mengatur pergeseran nada, penyesuaian tempo, atau simulasi
 ruang studio, klik tombol "Tampilkan Pengaturan Lanjutan" untuk membukanya.
 
 Langkah 3: Proses dan simpan berkas Anda.
-Klik tombol "Terapkan Penyamaran Audio" atau tekan Alt+P. Tentukan lokasi untuk
+Klik tombol "Proses Audio" atau tekan Alt+P. Tentukan lokasi untuk
 menyimpan berkas baru. Saya sangat menyarankan menyimpan hasil dalam format
 16-bit PCM WAV. Bilah progres akan berjalan seiring berjalannya setiap tahapan,
 dan setelah selesai, Anda mendapatkan berkas audio bersih yang siap diunggah.
-Jika Anda perlu membatalkan di tengah jalan, cukup klik tombol "Batal Proses".
+Jika Anda perlu membatalkan di tengah jalan, cukup klik tombol "Batal".
 
 
 RAHASIA MENGUNGGAH KE SUNO AGAR TIDAK DIBLOKIR
@@ -122,17 +122,17 @@ jendela penyamaran pribadi (incognito), hapus cache browser, atau istirahat
 sejenak sebelum mencoba lagi dengan berkas yang sudah diproses.
 
 
-MEMBERSIHKAN DAN MENYAMARKAN LIRIK LAGU
+MEMBERSIHKAN DAN MEMFORMAT LIRIK LAGU
 
 Jika Anda mengetik atau menempelkan lirik ke Suno dan ditolak karena memuat
 nama musisi terkenal, kata bermerek, atau filter hak cipta, pindah ke tab
-Penyelubung Lirik dengan menekan Ctrl+Tab.
+Sanitasi Lirik dengan menekan Ctrl+Tab.
 
 1. Tempelkan lirik asli Anda ke kotak bagian atas.
-2. Pilih strategi penyamaran. Opsi "Acoustic Spelling Scrambler" adalah yang
+2. Pilih strategi sanitasi. Opsi "Phonetic Spelling Variation" adalah yang
 paling populer karena mengganti frasa sensitif dengan ejaan fonetik yang ramah
 vokal dan pemenggalan suku kata tanpa mengubah cara vokalis menyanyikan liriknya.
-3. Klik tombol "Samarkan Lirik" atau tekan Alt+S.
+3. Klik tombol "Sanitasi Lirik" atau tekan Alt+S.
 4. Klik tombol "Salin ke Papan Klip" atau tekan Alt+C, lalu tempelkan hasilnya
 langsung ke kotak prompt Suno.
 
@@ -153,16 +153,17 @@ Tab dan Shift+Tab: Pindah maju dan mundur antar tombol atau input.
 Ctrl+Tab dan Ctrl+Shift+Tab: Beralih antara tab Audio dan tab Lirik.
 Alt+B: Memilih berkas audio masukan.
 Alt+P: Memproses dan mengekspor audio.
-Alt+E: Membuka laporan Audit Keamanan Penyamaran.
+Alt+E: Membuka laporan Audit Kemiripan Audio.
 Alt+S: Di tab Audio untuk membuka ABS Audio Slicer. Di tab Lirik untuk memproses lirik.
 Alt+A: Membuka pengaturan Cloud API.
 Ctrl+T: Membuka Pusat Tiket Dukungan.
 Ctrl+U: Membuka pemotong ABS Audio Slicer dari tab mana saja.
 Ctrl+B: Membuka editor daftar hitam musisi dan selebritas.
-Ctrl+H atau Shift+F1: Membuka panduan protokol unggah Suno.
+Ctrl+H atau Shift+F1: Membuka panduan unggah Suno.
 Ctrl+Shift+S: Mengekspor brankas profil terenkripsi (.sn).
 Ctrl+Shift+O: Mengimpor brankas profil terenkripsi (.sn).
 Ctrl+A: Memilih seluruh teks di dalam kotak teks.
+F2: Membuka jendela Catatan Rilis / Changelog terbaru (tersedia offline dan online).
 Escape: Menutup jendela dialog yang sedang aktif.
 
 

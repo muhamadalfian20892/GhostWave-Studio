@@ -25,11 +25,11 @@ from typing import Callable, Optional
 import wx
 
 
-APP_VERSION = "1.5.0"
+APP_VERSION = "1.5.1"
 GITHUB_REPO = "muhamadalfian20892/GhostWave-Studio"
 GITHUB_API_LATEST = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 GITHUB_RAW_CHANGELOG = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/changelog.txt"
-DEFAULT_USER_AGENT = "GhostWave-Studio-Updater/1.5"
+DEFAULT_USER_AGENT = "GhostWave-Studio-Updater/1.5.1"
 
 
 def normalize_version(v_str: str) -> tuple[int, ...]:
@@ -137,18 +137,94 @@ def parse_changelog_text(raw_text: str) -> dict[str, str]:
     }
 
 
-def fetch_raw_changelog(timeout: float = 6.0) -> Optional[dict[str, str]]:
-    """Fetches and parses changelog.txt directly from the GitHub repository."""
+USER_CACHE_CHANGELOG = os.path.join(os.path.expanduser("~"), ".ghostwave_changelog.txt")
+
+
+def get_local_changelog_path() -> str:
+    """Finds the primary local changelog.txt location."""
+    if hasattr(sys, "_MEIPASS"):
+        exe_dir = os.path.dirname(sys.executable)
+        exe_cl = os.path.join(exe_dir, "changelog.txt")
+        if os.path.exists(exe_cl):
+            return exe_cl
+        bundle_cl = os.path.join(sys._MEIPASS, "changelog.txt")
+        if os.path.exists(bundle_cl):
+            return bundle_cl
+    dev_cl = os.path.join(os.path.dirname(os.path.abspath(__file__)), "changelog.txt")
+    if os.path.exists(dev_cl):
+        return dev_cl
+    return os.path.abspath("changelog.txt")
+
+
+def get_cached_changelog_text() -> str:
+    """
+    Returns the latest available changelog text from disk.
+    Checks the downloaded user cache first, falling back to bundled or local changelog.txt.
+    """
+    if os.path.exists(USER_CACHE_CHANGELOG):
+        try:
+            with open(USER_CACHE_CHANGELOG, "r", encoding="utf-8", errors="replace") as f:
+                content = f.read().strip()
+                if content:
+                    return content
+        except Exception:
+            pass
+
+    local_path = get_local_changelog_path()
+    if os.path.exists(local_path):
+        try:
+            with open(local_path, "r", encoding="utf-8", errors="replace") as f:
+                return f.read().strip()
+        except Exception:
+            pass
+
+    return f"GhostWave Studio v{APP_VERSION}\nChangelog not found locally."
+
+
+def fetch_and_save_latest_changelog(timeout: float = 4.0) -> Optional[str]:
+    """
+    Downloads the latest changelog.txt from GitHub and caches it locally so users
+    can read up-to-date release notes offline or via the F2 viewer.
+    """
     try:
         req = urllib.request.Request(
             GITHUB_RAW_CHANGELOG,
             headers={"User-Agent": DEFAULT_USER_AGENT}
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            raw_text = resp.read().decode("utf-8", errors="replace")
-            return parse_changelog_text(raw_text)
+            raw_text = resp.read().decode("utf-8", errors="replace").strip()
+            if not raw_text:
+                return None
+
+            # 1. Cache to user home
+            try:
+                with open(USER_CACHE_CHANGELOG, "w", encoding="utf-8") as f:
+                    f.write(raw_text)
+            except Exception:
+                pass
+
+            # 2. Also try updating local directory changelog.txt if writable
+            local_path = get_local_changelog_path()
+            try:
+                with open(local_path, "w", encoding="utf-8") as f:
+                    f.write(raw_text)
+            except Exception:
+                pass
+
+            return raw_text
     except Exception:
         return None
+
+
+def fetch_raw_changelog(timeout: float = 6.0) -> Optional[dict[str, str]]:
+    """Fetches, caches, and parses changelog.txt directly from the GitHub repository."""
+    raw = fetch_and_save_latest_changelog(timeout=timeout)
+    if raw:
+        return parse_changelog_text(raw)
+    cached = get_cached_changelog_text()
+    if cached:
+        return parse_changelog_text(cached)
+    return None
 
 
 def check_for_updates(

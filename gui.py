@@ -38,9 +38,11 @@ from updater import (
     UpdateDownloadDialog,
     check_for_updates,
     check_updates_background,
-    run_update_flow
+    run_update_flow,
+    get_cached_changelog_text,
+    fetch_and_save_latest_changelog
 )
-from i18n import tr, _t, get_language, set_language, get_supported_languages
+from i18n import tr, _t, get_language, set_language, get_supported_languages, init_translations
 import support_client
 
 
@@ -52,7 +54,7 @@ class BlacklistDialog(wx.Dialog):
     def __init__(self, parent: wx.Window, lyrics_processor: LyricsProcessor):
         super().__init__(
             parent,
-            title=f"Edit Celebrity Blacklist - GhostWave Studio v{APP_VERSION}",
+            title="Edit Celebrity Blacklist",
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(520, 560)
         )
@@ -157,7 +159,7 @@ class CloudApiDialog(wx.Dialog):
     def __init__(self, parent: wx.Window):
         super().__init__(
             parent,
-            title=f"Cloud API Settings (Encrypted .sn Vault) - GhostWave Studio v{APP_VERSION}",
+            title="Cloud API Settings",
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(560, 440)
         )
@@ -280,7 +282,7 @@ class LyricsCloudDialog(wx.Dialog):
     def __init__(self, parent: wx.Window):
         super().__init__(
             parent,
-            title=f"Lyrics Cloud LLM Settings - GhostWave Studio v{APP_VERSION}",
+            title="Lyrics Cloud AI Settings",
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(560, 420)
         )
@@ -398,7 +400,7 @@ class EvasionAuditDialog(wx.Dialog):
     def __init__(self, parent: wx.Window, metrics: dict, orig_file: str, sani_file: str):
         super().__init__(
             parent,
-            title=f"Acoustic Evasion Safety Audit - GhostWave Studio v{APP_VERSION}",
+            title="Audio Similarity Audit",
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(580, 500)
         )
@@ -470,7 +472,7 @@ class SunoCheatSheetDialog(wx.Dialog):
     def __init__(self, parent: wx.Window):
         super().__init__(
             parent,
-            title=f"GhostWave Stealth Protocol & Suno Cheat Sheet - v{APP_VERSION}",
+            title="Suno Upload Guide & Tips",
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(640, 560)
         )
@@ -569,7 +571,7 @@ class AbsAudioSlicerDialog(wx.Dialog):
     def __init__(self, parent: wx.Window, audio_processor: AudioProcessor, initial_file: Optional[str] = None):
         super().__init__(
             parent,
-            title=f"ABS Audio Slicer - GhostWave Studio v{APP_VERSION}",
+            title="Audio Slicer for Suno",
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(580, 520)
         )
@@ -872,7 +874,7 @@ class SupportTicketDialog(wx.Dialog):
     def __init__(self, parent: Optional[wx.Window] = None):
         super().__init__(
             parent,
-            title=f"{tr('TICKET_DIALOG_TITLE')} - GhostWave Studio v{APP_VERSION}",
+            title=tr("TICKET_DIALOG_TITLE"),
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(720, 620)
         )
@@ -1274,7 +1276,7 @@ class AccessibilityGuideDialog(wx.Dialog):
     def __init__(self, parent: Optional[wx.Window] = None):
         super().__init__(
             parent,
-            title=f"Screen Reader Accessibility Guide - GhostWave Studio v{APP_VERSION}",
+            title="Accessibility Guide",
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(640, 560)
         )
@@ -1307,22 +1309,23 @@ class AccessibilityGuideDialog(wx.Dialog):
             "  Ctrl+Shift+Tab: Switch backward between tabs.\n"
             "  Escape: Dismiss active modal dialogs and popup sheets.\n"
             "  F1: Open this accessibility guide.\n"
+            "  F2: View What's New and Changelog.\n"
             "  Ctrl+T: Open Support Ticket center.\n"
-            "  Ctrl+H or Shift+F1: Open the Suno Stealth Protocol cheat sheet.\n\n"
+            "  Ctrl+H or Shift+F1: Open the Suno Upload Guide and Tips.\n\n"
             "Audio Sanitizer Tab (Alt+1 or Ctrl+Tab):\n"
             "  Alt+B: Browse for input audio file.\n"
             "  Alt+P: Process and export sanitized audio.\n"
-            "  Alt+E: Run quantitative Chromaprint fingerprint audit.\n"
-            "  Alt+S: Toggle advanced settings panel or open ABS Audio Slicer.\n"
+            "  Alt+E: Run audio similarity audit.\n"
+            "  Alt+S: Toggle advanced settings panel or open Audio Slicer.\n"
             "  Alt+A: Open Cloud API settings dialog.\n"
-            "  Ctrl+U: Launch ABS Audio Slicer from any tab.\n"
-            "  Ctrl+Shift+S: Export encrypted configuration vault (.sn).\n"
-            "  Ctrl+Shift+O: Import encrypted configuration vault (.sn).\n\n"
+            "  Ctrl+U: Launch Audio Slicer from any tab.\n"
+            "  Ctrl+Shift+S: Export encrypted configuration profile (.sn).\n"
+            "  Ctrl+Shift+O: Import encrypted configuration profile (.sn).\n\n"
             "Lyrics Sanitizer Tab (Alt+2 or Ctrl+Tab):\n"
-            "  Alt+S: Sanitize and cloak lyrics.\n"
-            "  Alt+C: Copy cloaked lyrics output to system clipboard.\n"
+            "  Alt+S: Sanitize lyrics.\n"
+            "  Alt+C: Copy sanitized lyrics output to system clipboard.\n"
             "  Alt+L: Clear lyrics input and output fields.\n"
-            "  Alt+M: Load sample copyright test lyrics.\n"
+            "  Alt+M: Load sample lyrics.\n"
             "  Ctrl+B: Open celebrity and artist blacklist editor.\n"
             "  Ctrl+L: Open Cloud LLM settings dialog.\n\n"
             "Screen Reader Compatibility:\n"
@@ -1378,11 +1381,144 @@ class AccessibilityGuideDialog(wx.Dialog):
 
     def on_copy(self, event: wx.CommandEvent):
         if wx.TheClipboard.Open():
-            wx.TheClipboard.SetData(wx.TextDataObject(self.text_ctrl.GetValue()))
-            wx.TheClipboard.Close()
-            wx.Bell()
+            try:
+                wx.TheClipboard.SetData(wx.TextDataObject(self.text_ctrl.GetValue()))
+                wx.Bell()
+            finally:
+                wx.TheClipboard.Close()
 
     def on_key_hook(self, event: wx.KeyEvent):
+        if event.GetKeyCode() == wx.WXK_ESCAPE:
+            self.EndModal(wx.ID_CANCEL)
+        else:
+            event.Skip()
+
+
+class ChangelogDialog(wx.Dialog):
+    """
+    Accessible dialog displaying What's New and Changelog.
+    Reads local cache immediately, and fetches fresh release notes from GitHub in background.
+    """
+
+    def __init__(self, parent: Optional[wx.Window] = None):
+        super().__init__(
+            parent,
+            title="What's New",
+            style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
+            size=(640, 560)
+        )
+        self.SetName("What's New Dialog")
+
+        panel = wx.Panel(self, style=wx.TAB_TRAVERSAL)
+        panel.SetName("What's New Dialog Panel")
+
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        self.header_label = wx.StaticText(
+            panel,
+            label=tr("CHANGELOG_HEADER")
+        )
+        self.header_label.SetName("What's New Header Label")
+        main_sizer.Add(self.header_label, 0, wx.ALL, 10)
+
+        initial_text = get_cached_changelog_text()
+
+        self.text_ctrl = wx.TextCtrl(
+            panel,
+            value=initial_text,
+            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.BORDER_THEME,
+            name="Changelog and Release Notes Text Area"
+        )
+        self.text_ctrl.SetToolTip("Read-only view of changes and release notes.")
+        main_sizer.Add(self.text_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
+        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
+
+        self.refresh_btn = wx.Button(
+            panel,
+            label="&Refresh from GitHub",
+            name="Refresh Changelog from GitHub Button"
+        )
+        self.refresh_btn.SetToolTip("Download the latest changelog directly from GitHub.")
+        self.refresh_btn.Bind(wx.EVT_BUTTON, self.on_refresh)
+        btn_sizer.Add(self.refresh_btn, 0, wx.RIGHT, 10)
+
+        self.copy_btn = wx.Button(
+            panel,
+            label=f"&{tr('COPY_BTN')}",
+            name="Copy Changelog to Clipboard Button"
+        )
+        self.copy_btn.SetToolTip("Copy changelog text to clipboard.")
+        self.copy_btn.Bind(wx.EVT_BUTTON, self.on_copy)
+        btn_sizer.Add(self.copy_btn, 0, wx.RIGHT, 10)
+
+        btn_sizer.AddStretchSpacer()
+
+        self.close_btn = wx.Button(
+            panel,
+            wx.ID_CANCEL,
+            label=f"&{tr('CLOSE_BTN')}",
+            name="Close What's New Dialog Button"
+        )
+        self.close_btn.SetDefault()
+        btn_sizer.Add(self.close_btn, 0)
+
+        main_sizer.Add(btn_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        panel.SetSizer(main_sizer)
+
+        dialog_sizer = wx.BoxSizer(wx.VERTICAL)
+        dialog_sizer.Add(panel, 1, wx.EXPAND)
+        self.SetSizer(dialog_sizer)
+        self.CentreOnParent()
+
+        self.Bind(wx.EVT_CHAR_HOOK, self.on_key)
+
+        import threading
+        threading.Thread(target=self._fetch_remote_changelog, daemon=True).start()
+
+    def _fetch_remote_changelog(self):
+        fresh = fetch_and_save_latest_changelog(timeout=4.0)
+        if fresh:
+            wx.CallAfter(self._update_text, fresh)
+
+    def _update_text(self, text: str):
+        try:
+            if self and hasattr(self, "text_ctrl") and self.text_ctrl:
+                self.text_ctrl.SetValue(text)
+        except Exception:
+            pass
+
+    def on_refresh(self, event: wx.CommandEvent):
+        self.refresh_btn.Enable(False)
+        self.refresh_btn.SetLabel("Updating...")
+
+        import threading
+        def _worker():
+            fresh = fetch_and_save_latest_changelog(timeout=5.0)
+            def _done():
+                try:
+                    if self and hasattr(self, "refresh_btn") and self.refresh_btn:
+                        self.refresh_btn.Enable(True)
+                        self.refresh_btn.SetLabel("&Refresh from GitHub")
+                        if fresh and hasattr(self, "text_ctrl") and self.text_ctrl:
+                            self.text_ctrl.SetValue(fresh)
+                            wx.Bell()
+                except Exception:
+                    pass
+            wx.CallAfter(_done)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def on_copy(self, event: wx.CommandEvent):
+        content = self.text_ctrl.GetValue()
+        if wx.TheClipboard.Open():
+            try:
+                wx.TheClipboard.SetData(wx.TextDataObject(content))
+                wx.Bell()
+            finally:
+                wx.TheClipboard.Close()
+
+    def on_key(self, event: wx.KeyEvent):
         if event.GetKeyCode() == wx.WXK_ESCAPE:
             self.EndModal(wx.ID_CANCEL)
         else:
@@ -1392,7 +1528,7 @@ class AccessibilityGuideDialog(wx.Dialog):
 class AboutDialog(wx.Dialog):
     """
     Accessible About dialog with scrollable read-only information,
-    architecture summary, and close button.
+    features overview, and close button.
     """
 
     def __init__(self, parent: Optional[wx.Window] = None):
@@ -1418,31 +1554,23 @@ class AboutDialog(wx.Dialog):
 
         about_text = (
             f"GhostWave Studio v{APP_VERSION}\n\n"
-            "Acoustic Stealth and Audio Cloaking Engine for Music Generation Platforms.\n"
-            "Transforms source audio and lyrics into acoustic structures that bypass\n"
-            "automated acoustic fingerprinting (Audible Magic, VIBE) and speech transcription filters.\n\n"
+            "An accessible desktop application for audio and lyrics sanitization.\n"
+            "Prepares audio tracks and lyrics for platforms like Suno\n"
+            "by applying audio processing filters and text formatting.\n\n"
             "Original Website:\n"
             "  http://technokerslab.blogspot.com/\n\n"
-            "Encrypted Profile Vault (.sn):\n"
-            "  Hardware-keyed AES-256 binary container protecting API keys, presets, and paths.\n"
-            "  Zero plaintext credential exposure on disk.\n"
-            "  Automatic backup rotation with .bak failover recovery.\n\n"
-            "Multi-Vector Evasion Architecture:\n"
-            "  Dynamic Micro-Chrono Jitter: Non-linear temporal warp disrupting landmark histograms.\n"
-            "  Hilbert Bode Frequency Shifter: Asymmetric single-sideband frequency translation.\n"
-            "  Adversarial Pseudo-Peak Injection: High-energy decoy spectral coordinates.\n"
-            "  Schroeder All-Pass Dispersion: Multi-stage phase scrambler preserving flat frequency response.\n"
-            "  Virtual Acoustic Re-Amping: Early reflections and room boundary diffusion.\n"
-            "  Anti-Whisper Scrambler: Center vocal notch and formant ring modulation.\n"
-            "  Front-End Preamble Camouflage: Analog noise preamble resetting fingerprint alignment.\n"
-            "  Cloud API Stem Isolation: Remote stem separation with zero local model weights.\n"
-            "  Chromaprint Audit: Quantitative evasion verification.\n\n"
-            "Accessibility:\n"
-            "  MSAA and UI Automation compliant controls, keyboard navigation, and screen reader feedback.\n\n"
+            "Features:\n"
+            "  - Audio Sanitizer: Pitch shift, tempo adjustments, frequency shift, room acoustics, and vocal reduction.\n"
+            "  - Lyrics Sanitizer: Profanity filter, celebrity name filter, Unicode cleanup, and phonetic variations.\n"
+            "  - Audio Slicer: Split audio tracks into WAV chunks suitable for library uploads.\n"
+            "  - In-App Support: Submit tickets and track developer replies directly within the app.\n"
+            "  - Secure Profiles: Stored locally in encrypted .sn format.\n"
+            "  - Accessibility: Full screen reader compatibility and keyboard shortcuts.\n\n"
             "Support and Inquiries:\n"
             "  Contact: hafiyanajah@gmail.com or submit an in-app support ticket (Ctrl+T).\n\n"
             "Open Source Contribution:\n"
-            "  GhostWave Studio is open source software. To contribute or inspect source code, visit: https://github.com/muhamadalfian20892/GhostWave-Studio"
+            "  GhostWave Studio is open source software. To contribute or inspect source code, visit:\n"
+            "  https://github.com/muhamadalfian20892/GhostWave-Studio"
         )
 
         self.text_ctrl = wx.TextCtrl(
@@ -1451,7 +1579,7 @@ class AboutDialog(wx.Dialog):
             style=wx.TE_MULTILINE | wx.TE_READONLY,
             name="About Software Read-Only Text Area"
         )
-        self.text_ctrl.SetToolTip("Software specifications and architecture overview.")
+        self.text_ctrl.SetToolTip("Software specifications and features overview.")
         main_sizer.Add(self.text_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -1554,23 +1682,23 @@ class AudioSanitizerPanel(wx.Panel):
         # Preset Choice + Cloud Settings Button
         preset_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.preset_label = wx.StaticText(self, label=tr("AUDIO_LABEL_PRESET"))
-        self.preset_label.SetName("Evasion Preset Label")
+        self.preset_label.SetName("Sanitization Preset Label")
         preset_sizer.Add(self.preset_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
 
         self.preset_choice = wx.Choice(
             self,
             choices=[
-                "Zero-Match Nuclear Cloak (Ultra Evasion - Recommended)",
-                "Balanced Quality & Evasion",
-                "Acoustic Re-Amping & Room Simulation",
-                "Bode Frequency Shifter & Anti-Chroma",
-                "Anti-Whisper / Vocal Scrambler Only",
-                "Cloud API Stem Isolation (Zero Local Downloads)"
+                "Complete Sanitization (Recommended)",
+                "Balanced Audio Quality",
+                "Room Acoustic Simulation",
+                "Frequency & Phase Shift",
+                "Vocal Reduction Only",
+                "Cloud API Stem Separation"
             ],
-            name="Evasion Preset Selection"
+            name="Sanitization Preset Selection"
         )
         self.preset_choice.SetSelection(0)
-        self.preset_choice.SetToolTip("Select a tuned multi-vector evasion profile.")
+        self.preset_choice.SetToolTip("Select an audio sanitization profile.")
         self.preset_choice.Bind(wx.EVT_CHOICE, self.on_preset_changed)
         preset_sizer.Add(self.preset_choice, 1, wx.EXPAND | wx.RIGHT, 10)
 
@@ -1886,7 +2014,7 @@ class AudioSanitizerPanel(wx.Panel):
 
     def on_preset_changed(self, event: wx.CommandEvent):
         idx = self.preset_choice.GetSelection()
-        if idx == 0:  # Zero-Match Nuclear Cloak (Ultra Evasion)
+        if idx == 0:  # Complete Sanitization (Recommended)
             self.pitch_spin.SetValue(2.5)
             self.tempo_spin.SetValue(0.940)
             self.format_choice.SetSelection(0)  # WAV
@@ -1900,7 +2028,7 @@ class AudioSanitizerPanel(wx.Panel):
             self.reamping_chk.SetValue(True)
             self.vocal_chk.SetValue(True)
             self.preamble_chk.SetValue(True)
-        elif idx == 1:  # Balanced Quality & Evasion
+        elif idx == 1:  # Balanced Audio Quality
             self.pitch_spin.SetValue(1.5)
             self.tempo_spin.SetValue(0.970)
             self.format_choice.SetSelection(0)  # WAV
@@ -1914,7 +2042,7 @@ class AudioSanitizerPanel(wx.Panel):
             self.reamping_chk.SetValue(True)
             self.vocal_chk.SetValue(True)
             self.preamble_chk.SetValue(False)
-        elif idx == 2:  # Acoustic Re-Amping & Room Simulation
+        elif idx == 2:  # Room Acoustic Simulation
             self.pitch_spin.SetValue(1.0)
             self.tempo_spin.SetValue(0.980)
             self.trim_chk.SetValue(False)
@@ -1926,7 +2054,7 @@ class AudioSanitizerPanel(wx.Panel):
             self.reamping_chk.SetValue(True)
             self.vocal_chk.SetValue(True)
             self.preamble_chk.SetValue(True)
-        elif idx == 3:  # Bode Frequency Shifter & Anti-Chroma
+        elif idx == 3:  # Frequency & Phase Shift
             self.pitch_spin.SetValue(2.0)
             self.tempo_spin.SetValue(0.950)
             self.trim_chk.SetValue(False)
@@ -1938,7 +2066,7 @@ class AudioSanitizerPanel(wx.Panel):
             self.reamping_chk.SetValue(False)
             self.vocal_chk.SetValue(True)
             self.preamble_chk.SetValue(False)
-        elif idx == 4:  # Anti-Whisper / Vocal Scrambler Only
+        elif idx == 4:  # Vocal Reduction Only
             self.pitch_spin.SetValue(0.0)
             self.tempo_spin.SetValue(1.000)
             self.trim_chk.SetValue(False)
@@ -2359,11 +2487,11 @@ class LyricsSanitizerPanel(wx.Panel):
 
         self.cloak_chk = wx.CheckBox(
             self,
-            label="Enable copyright evasion cloaking (breaks database n-gram detection)",
-            name="Enable copyright evasion cloaking"
+            label="Enable lyrics variation & spelling filters",
+            name="Enable lyrics variation and spelling filters"
         )
         self.cloak_chk.SetValue(True)
-        self.cloak_chk.SetToolTip("Transforms lyrics using acoustic and cadence disguises so copyright database checks pass.")
+        self.cloak_chk.SetToolTip("Transforms lyrics using spelling variations and phonetic substitutions to ensure unique phrasing.")
         cloak_box_sizer.Add(self.cloak_chk, 0, wx.ALL, 4)
 
         mode_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -2374,16 +2502,16 @@ class LyricsSanitizerPanel(wx.Panel):
         self.cloak_mode_choice = wx.Choice(
             self,
             choices=[
-                "Acoustic Spelling Scrambler (Preserves Original Lyrics) [Recommended]",
-                "Stealth Hybrid (Acoustic Disguise + Musical Ad-libs)",
-                "Phonetic Disguise (Acoustic Homophones Only)",
-                "Semantic Cadence (Syllable-Preserved Synonyms)",
-                "Cloud API Rewriter (Remote LLM)"
+                "Phonetic Spelling Variation (Preserves Lyrics) [Recommended]",
+                "Hybrid Variation (Spelling + Ad-libs)",
+                "Sound-Alike Substitution",
+                "Synonym Replacement (Preserves Syllables)",
+                "Cloud AI Rewriter"
             ],
-            name="Lyrics Cloaking Mode Selection"
+            name="Lyrics Sanitization Mode Selection"
         )
         self.cloak_mode_choice.SetSelection(0)
-        self.cloak_mode_choice.SetToolTip("Select cloaking strategy. Scrambler mode disrupts orthography while preserving exact song words and vocal flow.")
+        self.cloak_mode_choice.SetToolTip("Select sanitization strategy. Spelling variation alters orthography while preserving exact pronunciation and rhythm.")
         mode_sizer.Add(self.cloak_mode_choice, 1, wx.EXPAND | wx.RIGHT, 10)
 
         self.cloud_llm_btn = wx.Button(
@@ -2432,20 +2560,20 @@ class LyricsSanitizerPanel(wx.Panel):
 
         self.sanitize_btn = wx.Button(
             self,
-            label="&Sanitize & Cloak Lyrics",
-            name="Sanitize and Cloak Lyrics Button"
+            label="&Sanitize Lyrics",
+            name="Sanitize Lyrics Button"
         )
-        self.sanitize_btn.SetToolTip("Run moderation filters and copyright evasion cloaking (Hotkey: Alt+S).")
+        self.sanitize_btn.SetToolTip("Run moderation filters and lyrics sanitization (Hotkey: Alt+S).")
         self.sanitize_btn.Bind(wx.EVT_BUTTON, self.on_sanitize)
         self.sanitize_btn.SetDefault()
         action_sizer.Add(self.sanitize_btn, 0, wx.RIGHT, 10)
 
         self.copy_btn = wx.Button(
             self,
-            label="&Copy Cloaked Lyrics to Clipboard",
-            name="Copy Cloaked Lyrics to Clipboard Button"
+            label="&Copy Sanitized Lyrics to Clipboard",
+            name="Copy Sanitized Lyrics to Clipboard Button"
         )
-        self.copy_btn.SetToolTip("Copy the cloaked output lyrics to system clipboard (Hotkey: Alt+C).")
+        self.copy_btn.SetToolTip("Copy the sanitized output lyrics to system clipboard (Hotkey: Alt+C).")
         self.copy_btn.Bind(wx.EVT_BUTTON, self.on_copy)
         action_sizer.Add(self.copy_btn, 0, wx.RIGHT, 10)
 
@@ -2482,7 +2610,7 @@ class LyricsSanitizerPanel(wx.Panel):
             size=(-1, 130),
             name="Sanitized Lyrics Output"
         )
-        self.output_text_ctrl.SetToolTip("Final cloaked lyrics ready to paste into Suno AI.")
+        self.output_text_ctrl.SetToolTip("Final sanitized lyrics ready to paste into Suno.")
         out_splitter.Add(self.output_text_ctrl, 1, wx.EXPAND | wx.BOTTOM, 8)
 
         self.changes_label = wx.StaticText(self, label=tr("LYRICS_GROUP_AUDIT"))
@@ -2495,7 +2623,7 @@ class LyricsSanitizerPanel(wx.Panel):
             size=(-1, 120),
             name="Changes Made"
         )
-        self.changes_ctrl.SetToolTip("Audit report of copyright evasion metrics, token similarity, and applied changes.")
+        self.changes_ctrl.SetToolTip("Report of moderation changes, syllable counts, and applied variations.")
         out_splitter.Add(self.changes_ctrl, 1, wx.EXPAND)
 
         main_sizer.Add(out_splitter, 2, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
@@ -2725,7 +2853,7 @@ class GhostWaveFrame(wx.Frame):
         super().__init__(
             parent=None,
             id=wx.ID_ANY,
-            title=f"GhostWave Studio v{APP_VERSION} - Next-Gen Stealth Audio Cloak",
+            title=f"GhostWave Studio v{APP_VERSION}",
             size=(900, 760),
             style=wx.DEFAULT_FRAME_STYLE
         )
@@ -2736,10 +2864,14 @@ class GhostWaveFrame(wx.Frame):
         self.audio_processor = AudioProcessor()
         self.lyrics_processor = LyricsProcessor()
 
+        # Load active configuration and apply language early
+        self.config = GhostWaveConfig.load()
+        set_language(getattr(self.config, "language", "en"))
+
         # Build Status Bar for accessible live announcements
         self.statusbar = self.CreateStatusBar(1, wx.STB_DEFAULT_STYLE)
         self.statusbar.SetName("Application Status Bar")
-        self.set_status_text(f"Ready. GhostWave Studio v{APP_VERSION} initialized with encrypted profile vault (.sn).")
+        self.set_status_text(f"Ready. GhostWave Studio v{APP_VERSION} initialized.")
 
         # Build Menu Bar
         self._build_menu()
@@ -2785,11 +2917,15 @@ class GhostWaveFrame(wx.Frame):
         except Exception:
             pass
 
+        # Background fetch and cache changelog so it's always available offline/online
+        threading.Thread(target=fetch_and_save_latest_changelog, daemon=True).start()
+
     def on_close(self, event: wx.CloseEvent):
         """Safely saves active language and UI state into encrypted vault on exit."""
         try:
             cfg = GhostWaveConfig.load()
             cfg.language = get_language()
+            cfg.first_run = False
             if hasattr(self, "audio_tab") and hasattr(self.audio_tab, "preset_choice"):
                 cfg.default_preset = self.audio_tab.preset_choice.GetStringSelection()
                 fmt_idx = self.audio_tab.format_choice.GetSelection()
@@ -2850,7 +2986,8 @@ class GhostWaveFrame(wx.Frame):
 
         # Help Menu
         self.help_menu = wx.Menu()
-        self.protocol_help_item = self.help_menu.Append(wx.ID_ANY, tr("MENU_PROTOCOL_HELP"), "View battle-tested Suno upload cheat sheet")
+        self.changelog_item = self.help_menu.Append(wx.ID_ANY, tr("MENU_CHANGELOG"), "View version history and release notes")
+        self.protocol_help_item = self.help_menu.Append(wx.ID_ANY, tr("MENU_PROTOCOL_HELP"), "View Suno upload cheat sheet")
         self.ticket_item = self.help_menu.Append(wx.ID_ANY, tr("MENU_SUPPORT_TICKETS"), "Open support center and submit tickets")
         self.check_update_item = self.help_menu.Append(wx.ID_ANY, tr("MENU_CHECK_UPDATES"), "Check for application updates")
         self.a11y_item = self.help_menu.Append(wx.ID_HELP, tr("MENU_ACCESSIBILITY_GUIDE"), "View screen reader accessibility shortcuts")
@@ -2858,6 +2995,11 @@ class GhostWaveFrame(wx.Frame):
         self.menu_bar.Append(self.help_menu, tr("MENU_HELP"))
 
         self.SetMenuBar(self.menu_bar)
+
+        accel_entries = [
+            wx.AcceleratorEntry(wx.ACCEL_NORMAL, wx.WXK_F2, self.changelog_item.GetId()),
+        ]
+        self.SetAcceleratorTable(wx.AcceleratorTable(accel_entries))
 
         # Bind Menu Events
         self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_browse(e), self.open_item)
@@ -2873,12 +3015,19 @@ class GhostWaveFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_protocol(e), self.protocol_help_item)
         self.Bind(wx.EVT_MENU, lambda e: self.on_change_language("en"), self.lang_en_item)
         self.Bind(wx.EVT_MENU, lambda e: self.on_change_language("id"), self.lang_id_item)
+        self.Bind(wx.EVT_MENU, self.on_view_changelog, self.changelog_item)
         self.Bind(wx.EVT_MENU, self.on_support_tickets, self.ticket_item)
         self.Bind(wx.EVT_MENU, self.on_check_updates_menu, self.check_update_item)
         self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_cloud_settings(e), self.cloud_item)
         self.Bind(wx.EVT_MENU, lambda e: self.lyrics_tab.on_sanitize(e), self.sanitize_lyrics_item)
         self.Bind(wx.EVT_MENU, self.on_accessibility_guide, self.a11y_item)
         self.Bind(wx.EVT_MENU, self.on_about, self.about_item)
+
+    def on_view_changelog(self, event: Optional[wx.CommandEvent] = None):
+        """Displays the What's New / Changelog dialog."""
+        dlg = ChangelogDialog(self)
+        dlg.ShowModal()
+        dlg.Destroy()
 
     def on_support_tickets(self, event: wx.CommandEvent):
         dlg = SupportTicketDialog(self)
@@ -2892,10 +3041,15 @@ class GhostWaveFrame(wx.Frame):
         cfg.save()
         self.retranslate_ui()
         wx.Bell()
-        self.set_status_text(f"Language changed to: {lang_code.upper()}")
+        self.set_status_text(tr("STATUS_LANG_CHANGED", lang=lang_code.upper()))
 
     def retranslate_ui(self):
-        self.SetTitle(f"{tr('APP_TITLE')} v{APP_VERSION} - {tr('APP_SUBTITLE')}")
+        if hasattr(self, "audio_tab") and getattr(self.audio_tab, "selected_file_path", None):
+            fn = os.path.basename(self.audio_tab.selected_file_path)
+            self.SetTitle(f"GhostWave Studio v{APP_VERSION} - [{fn}]")
+        else:
+            self.SetTitle(f"GhostWave Studio v{APP_VERSION}")
+
         self.menu_bar.SetMenuLabel(0, tr("MENU_FILE"))
         self.menu_bar.SetMenuLabel(1, tr("MENU_EDIT"))
         self.menu_bar.SetMenuLabel(2, tr("MENU_ACTIONS"))
@@ -2919,7 +3073,14 @@ class GhostWaveFrame(wx.Frame):
 
         self.lang_en_item.SetItemLabel(tr("MENU_LANG_EN"))
         self.lang_id_item.SetItemLabel(tr("MENU_LANG_ID"))
+        current_lang = get_language()
+        if current_lang == "id":
+            self.lang_id_item.Check(True)
+        else:
+            self.lang_en_item.Check(True)
 
+        if hasattr(self, "changelog_item"):
+            self.changelog_item.SetItemLabel(tr("MENU_CHANGELOG"))
         self.protocol_help_item.SetItemLabel(tr("MENU_PROTOCOL_HELP"))
         self.ticket_item.SetItemLabel(tr("MENU_SUPPORT_TICKETS"))
         self.check_update_item.SetItemLabel(tr("MENU_CHECK_UPDATES"))
@@ -2960,7 +3121,7 @@ class GhostWaveFrame(wx.Frame):
                     f"Profile encrypted and saved successfully!\n\n"
                     f"File: {saved_path}\n"
                     f"Format: Encrypted Binary Vault (.sn)\n\n"
-                    f"Protected by military-grade AES-128-CBC & HMAC-SHA256.\n"
+                    f"Protected by AES-128-CBC encryption and HMAC-SHA256.\n"
                     f"Only GhostWave Studio can decrypt and read this file.",
                     "Profile Exported",
                     wx.OK | wx.ICON_INFORMATION,
@@ -3048,6 +3209,29 @@ SunoSanitizerFrame = GhostWaveFrame
 
 def main():
     app = wx.App(False)
+
+    try:
+        cfg = GhostWaveConfig.load()
+    except Exception:
+        cfg = GhostWaveConfig()
+
+    saved_lang = getattr(cfg, "language", "en")
+    init_translations(saved_lang)
+
+    # First run check: prompt user to pick preferred language
+    if getattr(cfg, "first_run", False):
+        dlg = LanguageSelectionDialog(None, current_lang=saved_lang)
+        if dlg.ShowModal() == wx.ID_OK:
+            selected_lang = dlg.get_selected_language()
+            cfg.language = selected_lang
+            cfg.first_run = False
+            cfg.save()
+            set_language(selected_lang)
+        else:
+            cfg.first_run = False
+            cfg.save()
+        dlg.Destroy()
+
     frame = GhostWaveFrame()
     frame.Show()
     app.MainLoop()

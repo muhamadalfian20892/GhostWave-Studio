@@ -2,7 +2,7 @@
 Main Application Entry Point for GhostWave Studio.
 
 Supports both Accessible Desktop GUI (wxPython) and Command-Line Interface (CLI)
-for automated batch audio cloaking, ABS slicing, and Chromaprint acoustic evasion audits.
+for automated audio sanitization, slicing, and acoustic similarity audits.
 All user settings and API credentials are encrypted inside the proprietary .sn vault.
 """
 
@@ -19,8 +19,8 @@ from updater import APP_VERSION
 
 def print_banner():
     print("=" * 64)
-    print(f"GhostWave Studio v{APP_VERSION} - Next-Gen Stealth Audio Cloaking Engine")
-    print("Encrypted Vault (.sn) Active | Multi-Vector Acoustic Evasion")
+    print(f"GhostWave Studio v{APP_VERSION} - Audio & Lyrics Sanitizer")
+    print("Encrypted Vault (.sn) Active | Suno Preparation Engine")
     print("=" * 64)
 
 
@@ -68,7 +68,7 @@ def run_cli(args: argparse.Namespace) -> int:
         return 0
 
     print(f"\n[GhostWave Studio] Source Audio: {os.path.basename(input_path)}")
-    print(f"[GhostWave Studio] Cloaking Preset: {args.preset.upper()}")
+    print(f"[GhostWave Studio] Preset: {args.preset.upper()}")
     print(f"[GhostWave Studio] Profile Vault: Encrypted (.sn) Loaded")
 
     options = AudioSanitizeOptions(
@@ -99,8 +99,8 @@ def run_cli(args: argparse.Namespace) -> int:
     result = processor.process(input_path, output_path, options, progress_callback=cli_progress)
 
     if result.success:
-        print("\n[SUCCESS] Audio cloaking completed successfully!")
-        print(f"Cloaked Audio Saved: {result.output_path}")
+        print("\n[SUCCESS] Audio sanitization completed successfully!")
+        print(f"Sanitized Audio Saved: {result.output_path}")
         print(f"Final Duration: {result.final_duration:.2f} seconds")
 
         metrics = benchmark_evasion_metrics(input_path, output_path)
@@ -114,12 +114,12 @@ def run_cli(args: argparse.Namespace) -> int:
             print("====================================\n")
         return 0
     else:
-        print(f"\n[ERROR] Audio cloaking failed: {result.error_message}")
+        print(f"\n[ERROR] Audio processing failed: {result.error_message}")
         return 1
 
 
 def run_lyrics_cli(args: argparse.Namespace) -> int:
-    """Executes lyrics sanitization and copyright evasion cloaking from CLI."""
+    """Executes lyrics sanitization and formatting from CLI."""
     lyrics_path = os.path.abspath(args.lyrics)
     if not os.path.exists(lyrics_path):
         print(f"Error: Lyrics file does not exist: {lyrics_path}")
@@ -146,7 +146,7 @@ def run_lyrics_cli(args: argparse.Namespace) -> int:
     )
 
     print("\n" + "=" * 50)
-    print("GHOSTWAVE LYRICS CLOAKING REPORT")
+    print("GHOSTWAVE LYRICS SANITIZATION REPORT")
     print("=" * 50)
     if result.audit:
         aud = result.audit
@@ -154,7 +154,7 @@ def run_lyrics_cli(args: argparse.Namespace) -> int:
         print(f"4-Gram Sequence Overlap: {aud.ngram_overlap_pct:.1f}%")
         print(f"Token Similarity:        {aud.token_similarity_pct:.1f}%")
         print(f"Syllable Cadence Match:  {aud.syllable_accuracy_pct:.1f}%")
-        print(f"Original Words:          {aud.original_words} -> Cloaked: {aud.cloaked_words}")
+        print(f"Original Words:          {aud.original_words} -> Sanitized: {aud.cloaked_words}")
 
     print("\nApplied Transformations:")
     for chg in result.changes:
@@ -164,9 +164,9 @@ def run_lyrics_cli(args: argparse.Namespace) -> int:
         out_path = os.path.abspath(args.lyrics_out)
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(result.sanitized_text)
-        print(f"\nCloaked lyrics written to: {out_path}")
+        print(f"\nSanitized lyrics written to: {out_path}")
     else:
-        print("\nCloaked Lyrics Output:")
+        print("\nSanitized Lyrics Output:")
         print("-" * 50)
         print(result.sanitized_text)
         print("-" * 50)
@@ -203,35 +203,35 @@ def run_gui():
 
 def main():
     parser = argparse.ArgumentParser(
-        description=f"GhostWave Studio v{APP_VERSION} - Next-Gen Stealth Audio Cloaking Engine & Acoustic Shield",
+        description=f"GhostWave Studio v{APP_VERSION} - Audio and Lyrics Sanitizer",
         add_help=True
     )
     parser.add_argument("-v", "--version", action="version", version=f"GhostWave Studio v{APP_VERSION}")
-    parser.add_argument("-i", "--input", help="Source audio file to cloak and sanitize")
+    parser.add_argument("-i", "--input", help="Source audio file to sanitize")
     parser.add_argument("-o", "--output", help="Destination audio file path")
     parser.add_argument("--format", choices=["mp3", "wav"], default="wav", help="Output container format (default: wav)")
-    parser.add_argument("--preset", choices=["max", "balanced", "cloud"], default="max", help="Evasion preset (default: max)")
+    parser.add_argument("--preset", choices=["max", "balanced", "cloud"], default="max", help="Sanitization preset (default: max)")
     parser.add_argument("--pitch", type=float, default=2.5, help="Pitch shift in semitones (default: 2.5)")
     parser.add_argument("--tempo", type=float, default=0.94, help="Tempo factor (default: 0.94)")
-    parser.add_argument("--bode-hz", type=float, default=8.5, help="Hilbert Bode frequency shift in Hz (default: 8.5)")
+    parser.add_argument("--bode-hz", type=float, default=8.5, help="Frequency shift in Hz (default: 8.5)")
     parser.add_argument("--duration", type=float, default=24.0, help="Max duration in seconds (default: 24.0)")
     parser.add_argument("--config-sn", help="Path to encrypted GhostWave profile vault (.sn)")
-    parser.add_argument("--no-jitter", action="store_true", help="Disable micro-chrono jitter")
+    parser.add_argument("--no-jitter", action="store_true", help="Disable timing variation jitter")
     parser.add_argument("--no-bode", action="store_true", help="Disable Bode frequency shifter")
-    parser.add_argument("--no-decoy", action="store_true", help="Disable STFT decoy peak injection")
-    parser.add_argument("--no-allpass", action="store_true", help="Disable Schroeder all-pass dispersion")
-    parser.add_argument("--no-room", action="store_true", help="Disable virtual acoustic re-amping")
+    parser.add_argument("--no-decoy", action="store_true", help="Disable decoy harmonic injection")
+    parser.add_argument("--no-allpass", action="store_true", help="Disable phase dispersion filter")
+    parser.add_argument("--no-room", action="store_true", help="Disable room acoustic simulation")
     parser.add_argument("--no-vocal-cut", action="store_true", help="Disable vocal suppression")
-    parser.add_argument("--no-preamble", action="store_true", help="Disable front-end preamble injection")
+    parser.add_argument("--no-preamble", action="store_true", help="Disable intro preamble injection")
     parser.add_argument("--trim", action="store_true", help="Trim audio to safe duration for Suno clips (disabled by default)")
     parser.add_argument("--no-trim", action="store_true", help="Explicitly disable duration trimming")
     parser.add_argument("--audit-only", action="store_true", help="Only run Chromaprint audit on existing files")
-    parser.add_argument("--slice", action="store_true", help="Slice audio into ABS safe chunks for Suno Library upload")
+    parser.add_argument("--slice", action="store_true", help="Slice audio into safe chunks for Suno Library upload")
     parser.add_argument("--slice-duration", type=float, default=22.0, help="Chunk duration in seconds for --slice (default: 22.0)")
-    parser.add_argument("--lyrics", help="Path to text file containing lyrics to cloak and sanitize")
-    parser.add_argument("--lyrics-out", help="Destination path for cloaked lyrics output file")
-    parser.add_argument("--lyrics-mode", choices=["scramble", "hybrid", "phonetic", "semantic", "cloud"], default="scramble", help="Lyrics cloaking strategy (default: scramble)")
-    parser.add_argument("--no-adlibs", action="store_true", help="Disable rhythmic ad-libs in lyrics cloaking")
+    parser.add_argument("--lyrics", help="Path to text file containing lyrics to sanitize")
+    parser.add_argument("--lyrics-out", help="Destination path for sanitized lyrics output file")
+    parser.add_argument("--lyrics-mode", choices=["scramble", "hybrid", "phonetic", "semantic", "cloud"], default="scramble", help="Lyrics sanitization strategy (default: scramble)")
+    parser.add_argument("--no-adlibs", action="store_true", help="Disable rhythmic ad-libs in lyrics sanitization")
     parser.add_argument("--check-update", action="store_true", help="Check GitHub for application updates")
     parser.add_argument("--gui", action="store_true", help="Explicitly launch graphical desktop user interface")
     parser.add_argument("--no-banner", action="store_true", help="Suppress startup banner output in CLI mode")

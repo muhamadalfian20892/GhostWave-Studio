@@ -55,7 +55,7 @@ class GhostWaveConfig:
     """
     # Metadata
     app_name: str = "GhostWave Studio"
-    app_version: str = "1.5.0"
+    app_version: str = "1.5.1"
     check_updates_on_startup: bool = True
     language: str = "en"
     first_run: bool = True
@@ -68,8 +68,8 @@ class GhostWaveConfig:
     cloud_model_version: str = "cjwbw/demucs"     # Demucs model version
     cloud_timeout_seconds: int = 180              # Remote job timeout in seconds
 
-    # Audio DSP & Evasion Preferences
-    default_preset: str = "Zero-Match Nuclear Cloak (Ultra Evasion - Recommended)"
+    # Audio DSP & Sanitization Preferences
+    default_preset: str = "Complete Sanitization (Recommended)"
     export_format: str = "wav"                    # "wav", "320k", "192k"
     pitch_shift_semitones: float = 2.5
     tempo_factor: float = 0.940

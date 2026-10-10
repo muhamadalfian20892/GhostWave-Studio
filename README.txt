@@ -1,4 +1,4 @@
-GHOSTWAVE STUDIO (VERSION 1.5.0)
+GHOSTWAVE STUDIO (VERSION 1.5.1)
 USER GUIDE AND GETTING STARTED MANUAL
 
 Original Website: http://technokerslab.blogspot.com/
@@ -72,20 +72,20 @@ and show you its duration, sample rate, and format right on the screen. You can
 also just drag and drop the audio file directly into the application window from
 File Explorer!
 
-Step 2: Choose your evasion preset.
-For most people, the default preset named "Zero-Match Nuclear Cloak" gives the
+Step 2: Choose your sanitization preset.
+For most people, the default preset named "Complete Sanitization" gives the
 highest level of protection. If you want to keep the song sounding closer to the
-original recording, you can pick "Balanced Quality and Evasion" from the drop-down
+original recording, you can pick "Balanced Audio Quality" from the drop-down
 menu. If you do not want to fiddle with numbers, you can completely ignore the
 advanced options. If you do want to tweak pitch shifts, tempo nudges, or room
 simulation, click the "Show Advanced Settings" button to expand those controls.
 
 Step 3: Process and export your file.
-Click "Process and Export Audio" or press Alt+P. Choose where you want to save
+Click "Process Audio" or press Alt+P. Choose where you want to save
 the new file. I strongly recommend saving your file as 16-bit PCM WAV. The
 progress bar will fill up as each stage runs, and when it finishes, you will get
 a clean audio file that is ready to upload. If you ever need to stop halfway
-through, simply click the "Cancel Process" button.
+through, simply click the "Cancel" button.
 
 
 THE SECRET TO UPLOADING TO SUNO WITHOUT GETTING BLOCKED
@@ -122,18 +122,18 @@ browser cache, or take a short break before trying again with your sanitized
 file.
 
 
-CLEANING AND CLOAKING YOUR LYRICS
+CLEANING AND FORMATTING YOUR LYRICS
 
 If you are typing or pasting lyrics into Suno and getting blocked because of
 artist names, trademarked phrases, or copyright filters, switch over to the
-Lyrics Moderation Shield tab by pressing Ctrl+Tab.
+Lyrics Sanitizer tab by pressing Ctrl+Tab.
 
 1. Paste your lyrics into the top box.
-2. Select your cloaking strategy. The "Acoustic Spelling Scrambler" is the most
+2. Select your sanitization strategy. The "Phonetic Spelling Variation" is the most
 popular because it replaces sensitive phrases with singable phonetic spellings
 and hyphenated syllables without changing how the singer delivers the words.
 3. Click "Sanitize Lyrics" or press Alt+S.
-4. Click "Copy Sanitized Lyrics" or press Alt+C, and paste them straight into
+4. Click "Copy to Clipboard" or press Alt+C, and paste them straight into
 Suno's prompt box.
 
 
@@ -153,17 +153,18 @@ Tab and Shift+Tab: Move forward and backward through controls.
 Ctrl+Tab and Ctrl+Shift+Tab: Switch between the Audio and Lyrics tabs.
 Alt+B: Browse for an audio file.
 Alt+P: Process and export your audio.
-Alt+E: Open the Evasion Safety Audit report.
+Alt+E: Open the Audio Similarity Audit report.
 Alt+S: In the Audio tab, opens the ABS Audio Slicer. In the Lyrics tab, runs
 the lyrics sanitizer.
 Alt+A: Open Cloud API settings.
 Ctrl+T: Open Support Ticket Center.
 Ctrl+U: Open the ABS Audio Slicer from anywhere in the app.
 Ctrl+B: Open the Celebrity Blacklist editor.
-Ctrl+H or Shift+F1: Open the Suno Upload Protocol cheat sheet.
+Ctrl+H or Shift+F1: Open the Suno Upload Guide cheat sheet.
 Ctrl+Shift+S: Export your encrypted profile vault (.sn).
 Ctrl+Shift+O: Import an existing encrypted profile vault (.sn).
 Ctrl+A: Select all text inside any multiline box.
+F2: Open What's New / Changelog viewer to read latest updates offline or online.
 Escape: Close any dialog immediately.
 
 

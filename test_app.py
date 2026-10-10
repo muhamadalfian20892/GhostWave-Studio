@@ -765,18 +765,48 @@ class TestVersion120UpgradesAndPersonas(unittest.TestCase):
         self.assertIn("OS:", diag)
         self.assertIn("App Version: 1.4.0", diag)
 
-    def test_config_manager_v1_5_0(self):
-        """Verifies v1.5.0 configuration fields and ticket persistence."""
+    def test_config_manager_v1_5_1(self):
+        """Verifies v1.5.1 configuration fields, default presets, and ticket persistence."""
         from config_manager import GhostWaveConfig
         cfg = GhostWaveConfig()
-        self.assertEqual(cfg.app_version, "1.5.0")
+        self.assertEqual(cfg.app_version, "1.5.1")
         self.assertEqual(cfg.language, "en")
+        self.assertEqual(cfg.default_preset, "Complete Sanitization (Recommended)")
         self.assertTrue(cfg.first_run)
         self.assertEqual(len(cfg.user_tickets), 0)
 
         cfg.add_user_ticket({"ticket_id": 42, "title": "Test Ticket", "status": "open"})
         self.assertEqual(len(cfg.user_tickets), 1)
         self.assertEqual(cfg.user_tickets[0]["ticket_id"], 42)
+
+    def test_changelog_caching_and_clean_title(self):
+        """Verifies changelog caching and clean title without extra tagline."""
+        import wx
+        from updater import get_cached_changelog_text
+        from gui import GhostWaveFrame, ChangelogDialog
+
+        notes = get_cached_changelog_text()
+        self.assertIn("GhostWave Studio", notes)
+
+        app = wx.App.Get()
+        if not app:
+            app = wx.App(False)
+
+        frame = GhostWaveFrame()
+        try:
+            self.assertEqual(frame.GetTitle(), "GhostWave Studio v1.5.1")
+            self.assertIsNotNone(frame.changelog_item)
+        finally:
+            frame.Destroy()
+
+        dlg = ChangelogDialog()
+        try:
+            self.assertTrue(dlg.text_ctrl.IsEditable() is False)
+            self.assertIsNotNone(dlg.copy_btn)
+            self.assertIsNotNone(dlg.refresh_btn)
+            self.assertIsNotNone(dlg.close_btn)
+        finally:
+            dlg.Destroy()
 
     def test_accessibility_guide_and_about_dialogs_structure(self):
         """Verifies AccessibilityGuideDialog and AboutDialog are structured with read-only text and close buttons."""
