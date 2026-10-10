@@ -519,6 +519,37 @@ class TestVersion120UpgradesAndPersonas(unittest.TestCase):
         finally:
             frame.Destroy()
 
+    def test_gui_lyrics_sanitizer_panel_and_main_frame_instantiation(self):
+        """Verifies LyricsSanitizerPanel and GhostWaveFrame full UI construction without errors."""
+        import wx
+        from gui import LyricsSanitizerPanel, GhostWaveFrame
+        from lyrics_processor import LyricsProcessor
+
+        app = wx.App.Get()
+        if not app:
+            app = wx.App(False)
+
+        frame = wx.Frame(None)
+        processor = LyricsProcessor()
+        panel = LyricsSanitizerPanel(frame, processor, lambda msg: None)
+        try:
+            self.assertIsNotNone(panel.mode_lbl)
+            self.assertEqual(panel.mode_lbl.GetName(), "Cloaking Strategy Label")
+            self.assertIsNotNone(panel.changes_label)
+            self.assertEqual(panel.changes_label.GetName(), "Changes Made Label")
+            self.assertTrue(panel.cloak_chk.IsChecked())
+        finally:
+            frame.Destroy()
+
+        main_win = GhostWaveFrame()
+        try:
+            self.assertIsNotNone(main_win.audio_tab)
+            self.assertIsNotNone(main_win.lyrics_tab)
+            self.assertIsNotNone(main_win.notebook)
+        finally:
+            main_win.Destroy()
+
+
     # Perspective 2: Developer Persona (DSP vectorization, caching, benchmarks)
     def test_dsp_filter_caching(self):
         """Validates that filter design functions leverage LRU caching."""

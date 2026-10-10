@@ -2368,8 +2368,8 @@ class LyricsSanitizerPanel(wx.Panel):
 
         mode_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.mode_lbl = wx.StaticText(self, label=tr("LYRICS_MODE_LABEL"))
-        mode_lbl.SetName("Cloaking Strategy Label")
-        mode_sizer.Add(mode_lbl, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        self.mode_lbl.SetName("Cloaking Strategy Label")
+        mode_sizer.Add(self.mode_lbl, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
 
         self.cloak_mode_choice = wx.Choice(
             self,
@@ -2486,8 +2486,8 @@ class LyricsSanitizerPanel(wx.Panel):
         out_splitter.Add(self.output_text_ctrl, 1, wx.EXPAND | wx.BOTTOM, 8)
 
         self.changes_label = wx.StaticText(self, label=tr("LYRICS_GROUP_AUDIT"))
-        changes_label.SetName("Changes Made Label")
-        out_splitter.Add(changes_label, 0, wx.BOTTOM, 4)
+        self.changes_label.SetName("Changes Made Label")
+        out_splitter.Add(self.changes_label, 0, wx.BOTTOM, 4)
 
         self.changes_ctrl = wx.TextCtrl(
             self,
