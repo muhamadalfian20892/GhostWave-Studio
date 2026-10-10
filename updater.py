@@ -24,12 +24,39 @@ from typing import Callable, Optional
 
 import wx
 
+try:
+    from i18n import tr
+except ImportError:
+    def tr(key: str, **kwargs) -> str:
+        fallback = {
+            "UPDATER_TITLE": "Update available! - GhostWave Studio",
+            "UPDATER_PROMPT": "Version {version} is available. Download this update?",
+            "UPDATER_CURRENT": "Currently installed version: {version}",
+            "UPDATER_WHATS_NEW": "&What's new:",
+            "UPDATER_SEE_WHATS_NEW": "&See What's New in This Changes",
+            "UPDATER_HIDE_WHATS_NEW": "&Hide What's New",
+            "UPDATER_LATER": "Download &Later",
+            "UPDATER_DOWNLOAD_NOW": "&Download Now",
+            "UPDATER_DOWNLOADING": "Downloading GhostWave Studio v{version}...",
+            "UPDATER_PULLING": "Pulling update...",
+            "UPDATER_DOWNLOAD_FAILED": "Failed to download update:\n\n{error}",
+            "UPDATER_CHECK_FAILED": "Could not check the updates.\n\nError: {error}\n\nPlease check your internet connection.",
+            "UPDATER_UP_TO_DATE": "You are running the latest version of GhostWave Studio (v{version}).\n\nNo updates are currently available",
+            "UPDATER_SUCCESS_TITLE": "Run Update Installer",
+            "UPDATER_SUCCESS_MSG": "Update package downloaded successfully!\n\nDo you want to run the installer now?\n(GhostWave Studio will close to allow installation.)",
+            "AUDIO_CANCEL_BTN": "&Cancel",
+        }.get(key, key)
+        try:
+            return fallback.format(**kwargs)
+        except Exception:
+            return fallback
 
-APP_VERSION = "1.5.1"
+
+APP_VERSION = "1.6.0"
 GITHUB_REPO = "muhamadalfian20892/GhostWave-Studio"
 GITHUB_API_LATEST = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 GITHUB_RAW_CHANGELOG = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/changelog.txt"
-DEFAULT_USER_AGENT = "GhostWave-Studio-Updater/1.5.1"
+DEFAULT_USER_AGENT = "GhostWave-Studio-Updater/1.6.0"
 
 
 def normalize_version(v_str: str) -> tuple[int, ...]:
@@ -159,32 +186,47 @@ def get_local_changelog_path() -> str:
 def get_cached_changelog_text() -> str:
     """
     Returns the latest available changelog text from disk.
-    Checks the downloaded user cache first, falling back to bundled or local changelog.txt.
+    Compares the downloaded user cache with bundled or local changelog.txt and returns whichever has higher version.
     """
+    user_text = ""
     if os.path.exists(USER_CACHE_CHANGELOG):
         try:
             with open(USER_CACHE_CHANGELOG, "r", encoding="utf-8", errors="replace") as f:
-                content = f.read().strip()
-                if content:
-                    return content
+                user_text = f.read().strip()
         except Exception:
             pass
 
+    local_text = ""
     local_path = get_local_changelog_path()
     if os.path.exists(local_path):
         try:
             with open(local_path, "r", encoding="utf-8", errors="replace") as f:
-                return f.read().strip()
+                local_text = f.read().strip()
         except Exception:
             pass
+
+    if user_text and local_text:
+        u_ver = parse_changelog_text(user_text).get("version", "")
+        l_ver = parse_changelog_text(local_text).get("version", "")
+        if u_ver and l_ver:
+            cmp = compare_versions(l_ver, u_ver)
+            if cmp > 0:
+                return user_text
+            return local_text
+        return user_text or local_text
+    elif user_text:
+        return user_text
+    elif local_text:
+        return local_text
 
     return f"GhostWave Studio v{APP_VERSION}\nChangelog not found locally."
 
 
 def fetch_and_save_latest_changelog(timeout: float = 4.0) -> Optional[str]:
     """
-    Downloads the latest changelog.txt from GitHub and caches it locally so users
+    Downloads the latest changelog.txt and caches it locally so users
     can read up-to-date release notes offline or via the F2 viewer.
+    Guards local development repositories against being overwritten with older remote text.
     """
     try:
         req = urllib.request.Request(
@@ -196,6 +238,19 @@ def fetch_and_save_latest_changelog(timeout: float = 4.0) -> Optional[str]:
             if not raw_text:
                 return None
 
+            local_path = get_local_changelog_path()
+            if os.path.exists(local_path):
+                try:
+                    with open(local_path, "r", encoding="utf-8", errors="replace") as f:
+                        loc_content = f.read().strip()
+                    loc_ver = parse_changelog_text(loc_content).get("version", "")
+                    rem_ver = parse_changelog_text(raw_text).get("version", "")
+                    if loc_ver and rem_ver and compare_versions(rem_ver, loc_ver) > 0:
+                        # Remote is older than local, do not downgrade
+                        return loc_content
+                except Exception:
+                    pass
+
             # 1. Cache to user home
             try:
                 with open(USER_CACHE_CHANGELOG, "w", encoding="utf-8") as f:
@@ -203,13 +258,14 @@ def fetch_and_save_latest_changelog(timeout: float = 4.0) -> Optional[str]:
             except Exception:
                 pass
 
-            # 2. Also try updating local directory changelog.txt if writable
-            local_path = get_local_changelog_path()
-            try:
-                with open(local_path, "w", encoding="utf-8") as f:
-                    f.write(raw_text)
-            except Exception:
-                pass
+            # 2. Never overwrite if in git repository
+            dev_git = Path(local_path).parent / ".git"
+            if not dev_git.exists():
+                try:
+                    with open(local_path, "w", encoding="utf-8") as f:
+                        f.write(raw_text)
+                except Exception:
+                    pass
 
             return raw_text
     except Exception:
@@ -317,7 +373,7 @@ class UpdateDialog(wx.Dialog):
     def __init__(self, parent: Optional[wx.Window], update_info: UpdateInfo):
         super().__init__(
             parent,
-            title="Update available! - GhostWave Studio",
+            title=tr("UPDATER_TITLE"),
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(560, 240)
         )
@@ -335,7 +391,7 @@ class UpdateDialog(wx.Dialog):
         main_sizer = wx.BoxSizer(wx.VERTICAL)
 
         # Header Question Prompt
-        prompt_text = f"Version {self.info.latest_version} is available. Download this update?"
+        prompt_text = tr("UPDATER_PROMPT", version=self.info.latest_version)
         self.prompt_label = wx.StaticText(panel, label=prompt_text)
         self.prompt_label.SetName("Update Question Prompt")
         font = self.prompt_label.GetFont()
@@ -345,7 +401,7 @@ class UpdateDialog(wx.Dialog):
         main_sizer.Add(self.prompt_label, 0, wx.ALL, 12)
 
         # Version Context Label
-        context_text = f"Currently installed version: {self.info.current_version}"
+        context_text = tr("UPDATER_CURRENT", version=self.info.current_version)
         self.context_label = wx.StaticText(panel, label=context_text)
         self.context_label.SetName("Current Installed Version Information")
         main_sizer.Add(self.context_label, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
@@ -357,7 +413,7 @@ class UpdateDialog(wx.Dialog):
 
         self.changelog_header_label = wx.StaticText(
             self.changelog_panel,
-            label="&What's new:"
+            label=tr("UPDATER_WHATS_NEW")
         )
         self.changelog_header_label.SetName("Changelog and Release Notes Label")
         changelog_sizer.Add(self.changelog_header_label, 0, wx.BOTTOM, 6)
@@ -380,7 +436,7 @@ class UpdateDialog(wx.Dialog):
         # Action Buttons Sizer
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        self.see_new_btn = wx.Button(panel, label="&See What's New in This Changes")
+        self.see_new_btn = wx.Button(panel, label=tr("UPDATER_SEE_WHATS_NEW"))
         self.see_new_btn.SetName("See What's New in This Changes Button")
         self.see_new_btn.SetToolTip("View detailed changes and release notes for this update.")
         self.see_new_btn.Bind(wx.EVT_BUTTON, self.on_toggle_changelog)
@@ -388,12 +444,12 @@ class UpdateDialog(wx.Dialog):
 
         btn_sizer.AddStretchSpacer()
 
-        self.later_btn = wx.Button(panel, wx.ID_CANCEL, label="Download &Later")
+        self.later_btn = wx.Button(panel, wx.ID_CANCEL, label=tr("UPDATER_LATER"))
         self.later_btn.SetName("Download Later Button")
         self.later_btn.SetToolTip("Postpone downloading this update.")
         btn_sizer.Add(self.later_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
-        self.download_btn = wx.Button(panel, wx.ID_OK, label="&Download Now")
+        self.download_btn = wx.Button(panel, wx.ID_OK, label=tr("UPDATER_DOWNLOAD_NOW"))
         self.download_btn.SetName("Download Now Button")
         self.download_btn.SetToolTip("Download and install this update now.")
         self.download_btn.SetDefault()
@@ -413,7 +469,7 @@ class UpdateDialog(wx.Dialog):
         if not self.changelog_visible:
             self.changelog_visible = True
             self.changelog_panel.Show(True)
-            self.see_new_btn.SetLabel("&Hide What's New")
+            self.see_new_btn.SetLabel(tr("UPDATER_HIDE_WHATS_NEW"))
             self.see_new_btn.SetName("Hide What's New Button")
             self.SetSize((580, 520))
             self.Layout()
@@ -421,7 +477,7 @@ class UpdateDialog(wx.Dialog):
         else:
             self.changelog_visible = False
             self.changelog_panel.Show(False)
-            self.see_new_btn.SetLabel("&See What's New in This Changes")
+            self.see_new_btn.SetLabel(tr("UPDATER_SEE_WHATS_NEW"))
             self.see_new_btn.SetName("See What's New in This Changes Button")
             self.SetSize((560, 240))
             self.Layout()
@@ -469,7 +525,7 @@ class UpdateDownloadDialog(wx.Dialog):
 
         self.status_label = wx.StaticText(
             panel,
-            label=f"Downloading GhostWave Studio v{self.version}..."
+            label=tr("UPDATER_DOWNLOADING", version=self.version)
         )
         self.status_label.SetName("Download Status Description")
         main_sizer.Add(self.status_label, 0, wx.ALL, 12)
@@ -481,7 +537,7 @@ class UpdateDownloadDialog(wx.Dialog):
 
         self.progress_label = wx.StaticText(
             panel,
-            label="Pulling update..."
+            label=tr("UPDATER_PULLING")
         )
         self.progress_label.SetName("Download Progress Details Label")
         main_sizer.Add(self.progress_label, 0, wx.ALL, 12)
@@ -489,7 +545,7 @@ class UpdateDownloadDialog(wx.Dialog):
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
         btn_sizer.AddStretchSpacer()
 
-        self.cancel_btn = wx.Button(panel, wx.ID_CANCEL, label="&Cancel")
+        self.cancel_btn = wx.Button(panel, wx.ID_CANCEL, label=tr("AUDIO_CANCEL_BTN"))
         self.cancel_btn.SetName("Cancel Download Button")
         self.cancel_btn.SetToolTip("Cancel the active download.")
         self.cancel_btn.Bind(wx.EVT_BUTTON, self.on_cancel)
@@ -579,7 +635,7 @@ class UpdateDownloadDialog(wx.Dialog):
     def _on_download_failed(self):
         err = self.error_message or "Unknown download error."
         wx.MessageBox(
-            f"Failed to download update:\n\n{err}",
+            tr("UPDATER_DOWNLOAD_FAILED", error=err),
             "Download Error",
             wx.OK | wx.ICON_ERROR,
             self
@@ -599,7 +655,7 @@ def run_update_flow(parent: Optional[wx.Window], info: UpdateInfo):
     """
     Executes the interactive update user experience:
     1. Shows UpdateDialog.
-    2. If user clicks Download Now, either initiates direct download or opens GitHub.
+    2. If user clicks Download Now, either initiates direct download or opens release page.
     3. Offers to launch the downloaded installer package upon completion.
     """
     dlg = UpdateDialog(parent, info)
@@ -615,15 +671,11 @@ def run_update_flow(parent: Optional[wx.Window], info: UpdateInfo):
 
             if dl_res == wx.ID_OK and saved_path and os.path.exists(saved_path):
                 # Prompt to launch installer
-                msg = (
-                    f"Update package downloaded successfully!\n\n"
-                    f"Do you want to run the installer now?\n"
-                    f"(GhostWave Studio will close to allow installation.)"
-                )
+                msg = tr("UPDATER_SUCCESS_MSG")
                 launch_dlg = wx.MessageDialog(
                     parent,
                     msg,
-                    "Run Update Installer",
+                    tr("UPDATER_SUCCESS_TITLE"),
                     wx.YES_NO | wx.ICON_QUESTION
                 )
                 if launch_dlg.ShowModal() == wx.ID_YES:
@@ -673,17 +725,14 @@ def check_updates_background(
             elif not silent:
                 if info.error_message:
                     wx.MessageBox(
-                        f"Could not check the updates.\n\n"
-                        f"Error: {info.error_message}\n\n"
-                        f"Please check your internet connection.",
+                        tr("UPDATER_CHECK_FAILED", error=info.error_message),
                         "Update Check Failed",
                         wx.OK | wx.ICON_WARNING,
                         parent
                     )
                 else:
                     wx.MessageBox(
-                        f"You are running the latest version of GhostWave Studio (v{current_version}).\n\n"
-                        f"No updates are currently available",
+                        tr("UPDATER_UP_TO_DATE", version=current_version),
                         "GhostWave Studio Up to Date",
                         wx.OK | wx.ICON_INFORMATION,
                         parent

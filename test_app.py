@@ -765,11 +765,11 @@ class TestVersion120UpgradesAndPersonas(unittest.TestCase):
         self.assertIn("OS:", diag)
         self.assertIn("App Version: 1.4.0", diag)
 
-    def test_config_manager_v1_5_1(self):
-        """Verifies v1.5.1 configuration fields, default presets, and ticket persistence."""
+    def test_config_manager_v1_6_0(self):
+        """Verifies v1.6.0 configuration fields, default presets, and ticket persistence."""
         from config_manager import GhostWaveConfig
         cfg = GhostWaveConfig()
-        self.assertEqual(cfg.app_version, "1.5.1")
+        self.assertEqual(cfg.app_version, "1.6.0")
         self.assertEqual(cfg.language, "en")
         self.assertEqual(cfg.default_preset, "Complete Sanitization (Recommended)")
         self.assertTrue(cfg.first_run)
@@ -794,7 +794,7 @@ class TestVersion120UpgradesAndPersonas(unittest.TestCase):
 
         frame = GhostWaveFrame()
         try:
-            self.assertEqual(frame.GetTitle(), "GhostWave Studio v1.5.1")
+            self.assertEqual(frame.GetTitle(), "GhostWave Studio v1.6.0")
             self.assertIsNotNone(frame.changelog_item)
         finally:
             frame.Destroy()
@@ -819,7 +819,8 @@ class TestVersion120UpgradesAndPersonas(unittest.TestCase):
         dlg = AccessibilityGuideDialog()
         self.assertIn("GhostWave Studio", dlg.text_ctrl.GetValue())
         self.assertIn("http://technokerslab.blogspot.com/", dlg.text_ctrl.GetValue())
-        self.assertIn("https://github.com/muhamadalfian20892/GhostWave-Studio", dlg.text_ctrl.GetValue())
+        self.assertIn("README.txt", dlg.text_ctrl.GetValue())
+        self.assertNotIn("github.com", dlg.text_ctrl.GetValue().lower())
         self.assertTrue(dlg.text_ctrl.IsEditable() is False)
         self.assertIsNotNone(dlg.close_btn)
         self.assertIsNotNone(dlg.copy_btn)
@@ -828,7 +829,8 @@ class TestVersion120UpgradesAndPersonas(unittest.TestCase):
         about_dlg = AboutDialog()
         self.assertIn("GhostWave Studio", about_dlg.text_ctrl.GetValue())
         self.assertIn("http://technokerslab.blogspot.com/", about_dlg.text_ctrl.GetValue())
-        self.assertIn("https://github.com/muhamadalfian20892/GhostWave-Studio", about_dlg.text_ctrl.GetValue())
+        self.assertIn("README.txt", about_dlg.text_ctrl.GetValue())
+        self.assertNotIn("github.com", about_dlg.text_ctrl.GetValue().lower())
         self.assertTrue(about_dlg.text_ctrl.IsEditable() is False)
         self.assertIsNotNone(about_dlg.close_btn)
         about_dlg.Destroy()

@@ -1,4 +1,4 @@
-GHOSTWAVE STUDIO (VERSION 1.5.1)
+GHOSTWAVE STUDIO (VERSION 1.6.0)
 USER GUIDE AND GETTING STARTED MANUAL
 
 Original Website: http://technokerslab.blogspot.com/

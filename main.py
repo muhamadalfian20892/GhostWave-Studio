@@ -232,7 +232,7 @@ def main():
     parser.add_argument("--lyrics-out", help="Destination path for sanitized lyrics output file")
     parser.add_argument("--lyrics-mode", choices=["scramble", "hybrid", "phonetic", "semantic", "cloud"], default="scramble", help="Lyrics sanitization strategy (default: scramble)")
     parser.add_argument("--no-adlibs", action="store_true", help="Disable rhythmic ad-libs in lyrics sanitization")
-    parser.add_argument("--check-update", action="store_true", help="Check GitHub for application updates")
+    parser.add_argument("--check-update", action="store_true", help="Check for application updates")
     parser.add_argument("--gui", action="store_true", help="Explicitly launch graphical desktop user interface")
     parser.add_argument("--no-banner", action="store_true", help="Suppress startup banner output in CLI mode")
 
@@ -240,7 +240,7 @@ def main():
 
     if args.check_update:
         from updater import check_for_updates
-        print(f"Checking GitHub for updates (current version: {APP_VERSION})...")
+        print(f"Checking for updates (current version: {APP_VERSION})...")
         info = check_for_updates()
         if info.has_update:
             print(f"Update available: v{info.latest_version}")

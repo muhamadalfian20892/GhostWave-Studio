@@ -533,7 +533,7 @@ class SunoCheatSheetDialog(wx.Dialog):
             "",
             "5. VOCAL ANNIHILATION & LYRICS MODERATION:",
             "   • Lead vocals contain the most prominent biometric and melodic markers.",
-            "   • Always use 'Zero-Match Nuclear Cloak' (or Cloud API Demucs isolation)",
+            "   • Always use 'Complete Sanitization' (or Cloud API Demucs isolation)",
             "     to eradicate the center vocal channel.",
             "   • If pasting lyrics into Suno, use the 'Lyrics Sanitizer' tab to strip",
             "     celebrity and artist names to avoid prompt filter rejections.",
@@ -544,8 +544,8 @@ class SunoCheatSheetDialog(wx.Dialog):
             "     preventing Audible Magic's peak pickers from indexing original audio.",
             "==================================================================",
             "Open Source Notice:",
-            "GhostWave Studio is open source software. To contribute or inspect source code,",
-            "visit: https://github.com/muhamadalfian20892/GhostWave-Studio",
+            "GhostWave Studio is open source software. For source code and contributions,",
+            "please see README.txt.",
             "=================================================================="
         ]
         cheat_ctrl.SetValue("\n".join(protocol_lines))
@@ -1334,7 +1334,7 @@ class AccessibilityGuideDialog(wx.Dialog):
             "Support and Inquiries:\n"
             "For assistance, questions, or bug reports, email hafiyanajah@gmail.com or submit an in-app support ticket (Ctrl+T).\n\n"
             "Open Source Notice:\n"
-            "GhostWave Studio is open source software. If you would like to contribute or view the repository, visit: https://github.com/muhamadalfian20892/GhostWave-Studio"
+            "GhostWave Studio is open source software. For source code and contributions, please see README.txt."
         )
 
         self.text_ctrl = wx.TextCtrl(
@@ -1436,10 +1436,10 @@ class ChangelogDialog(wx.Dialog):
 
         self.refresh_btn = wx.Button(
             panel,
-            label="&Refresh from GitHub",
-            name="Refresh Changelog from GitHub Button"
+            label="&Refresh Notes",
+            name="Refresh Changelog Button"
         )
-        self.refresh_btn.SetToolTip("Download the latest changelog directly from GitHub.")
+        self.refresh_btn.SetToolTip("Check for and download the latest release notes.")
         self.refresh_btn.Bind(wx.EVT_BUTTON, self.on_refresh)
         btn_sizer.Add(self.refresh_btn, 0, wx.RIGHT, 10)
 
@@ -1478,8 +1478,11 @@ class ChangelogDialog(wx.Dialog):
 
     def _fetch_remote_changelog(self):
         fresh = fetch_and_save_latest_changelog(timeout=4.0)
-        if fresh:
-            wx.CallAfter(self._update_text, fresh)
+        if fresh and wx.App.Get():
+            try:
+                wx.CallAfter(self._update_text, fresh)
+            except Exception:
+                pass
 
     def _update_text(self, text: str):
         try:
@@ -1499,13 +1502,17 @@ class ChangelogDialog(wx.Dialog):
                 try:
                     if self and hasattr(self, "refresh_btn") and self.refresh_btn:
                         self.refresh_btn.Enable(True)
-                        self.refresh_btn.SetLabel("&Refresh from GitHub")
+                        self.refresh_btn.SetLabel("&Refresh Notes")
                         if fresh and hasattr(self, "text_ctrl") and self.text_ctrl:
                             self.text_ctrl.SetValue(fresh)
                             wx.Bell()
                 except Exception:
                     pass
-            wx.CallAfter(_done)
+            if wx.App.Get():
+                try:
+                    wx.CallAfter(_done)
+                except Exception:
+                    pass
 
         threading.Thread(target=_worker, daemon=True).start()
 
@@ -1568,9 +1575,8 @@ class AboutDialog(wx.Dialog):
             "  - Accessibility: Full screen reader compatibility and keyboard shortcuts.\n\n"
             "Support and Inquiries:\n"
             "  Contact: hafiyanajah@gmail.com or submit an in-app support ticket (Ctrl+T).\n\n"
-            "Open Source Contribution:\n"
-            "  GhostWave Studio is open source software. To contribute or inspect source code, visit:\n"
-            "  https://github.com/muhamadalfian20892/GhostWave-Studio"
+            "Open Source Notice:\n"
+            "  GhostWave Studio is open source software. For source code and contributions, please see README.txt."
         )
 
         self.text_ctrl = wx.TextCtrl(
@@ -3180,12 +3186,12 @@ class GhostWaveFrame(wx.Frame):
             wx.CallAfter(_update)
 
     def _check_updates_startup(self):
-        """Silently queries GitHub for updates in the background on startup."""
+        """Silently queries for updates in the background on startup."""
         check_updates_background(self, silent=True, current_version=APP_VERSION)
 
     def on_check_updates_menu(self, event: wx.CommandEvent):
-        """Manually checks for application updates from GitHub."""
-        self.set_status_text("Checking GitHub for GhostWave Studio updates...")
+        """Manually checks for application updates."""
+        self.set_status_text("Checking for application updates...")
 
         def _finish(info):
             self.set_status_text("Ready.")

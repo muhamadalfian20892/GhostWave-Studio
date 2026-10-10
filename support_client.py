@@ -25,7 +25,7 @@ def generate_ticket_key() -> str:
     return secrets.token_hex(16)
 
 
-def get_system_diagnostics(app_version: str = "1.5.1") -> str:
+def get_system_diagnostics(app_version: str = "1.6.0") -> str:
     """Collects system details for diagnostic ticket reports."""
     try:
         os_info = f"{platform.platform()} ({platform.architecture()[0]})"
@@ -53,7 +53,7 @@ def create_ticket(
     category: str,
     title: str,
     description: str,
-    client_version: str = "1.5.1",
+    client_version: str = "1.6.0",
     attach_sys_info: bool = True,
     worker_url: str = DEFAULT_WORKER_URL
 ) -> Tuple[bool, Dict[str, Any], Optional[str]]:

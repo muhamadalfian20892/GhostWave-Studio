@@ -1,5 +1,19 @@
 GhostWave Studio - Changelog & Release Notes
 
+Version: 1.6.0
+Release Date: 2026-10-10
+
+What is new:
+New on 10/10/2026:
+	Removed all mentions of online hosting repositories from in-app menus, dialogs, buttons, and status prompts, keeping all distribution packages completely clean and self-contained. Anyone who wants to contribute code or inspect the source repository can now find those details directly in the documentation files.
+	Cleaned up the main window title to simply read GhostWave Studio with the current version number, removing unnecessary subtitle branding so screen readers announce window switches much faster.
+	Replaced confusing and overly dramatic technical terminology across the entire user interface with standard human language, such as renaming Nuclear Cloak to Complete Sanitization and Lyrics Cloaking to Lyrics Sanitizer.
+	The release notes viewer now caches changelog entries locally on launch so you can press F2 to review recent updates at any time, even when offline.
+	The update prompt and download progress dialogs now fully respect your selected language, displaying proper Indonesian text when Indonesian mode is active.
+	Fixed a bug where changing the interface language could fail to persist if the app was closed immediately after selection. Language selections are now written to the configuration vault immediately upon switching.
+	Resolved an unhandled NameError crash that could occur in the audio panel when switching between preset configurations.
+	Added safety guards to the audio audit dialog and slicer controls to prevent potential zero-division crashes when working with extremely short audio samples.
+
 Version: 1.5.0
 Release Date: 2026-10-10
 
