@@ -452,6 +452,8 @@ class TestVersion120UpgradesAndPersonas(unittest.TestCase):
 
     def setUp(self):
         self.test_dir = tempfile.mkdtemp()
+        from i18n import set_language
+        set_language("en")
 
     def tearDown(self):
         shutil.rmtree(self.test_dir, ignore_errors=True)
@@ -482,6 +484,9 @@ class TestVersion120UpgradesAndPersonas(unittest.TestCase):
         import wx
         from gui import AudioSanitizerPanel
         from audio_processor import AudioProcessor
+        from i18n import set_language, tr
+
+        set_language("en")
 
         app = wx.App.Get()
         if not app:
@@ -497,18 +502,18 @@ class TestVersion120UpgradesAndPersonas(unittest.TestCase):
 
             # 2. Advanced panel is collapsed by default to avoid clutter
             self.assertFalse(panel.adv_panel.IsShown())
-            self.assertEqual(panel.toggle_adv_btn.GetLabel(), "&Show Advanced Settings")
+            self.assertEqual(panel.toggle_adv_btn.GetLabel(), tr("AUDIO_SHOW_ADVANCED_BTN"))
             self.assertEqual(panel.toggle_adv_btn.GetName(), "Show Advanced Settings Button")
 
             # 3. Toggling button expands advanced panel
             panel.on_toggle_advanced(None)
             self.assertTrue(panel.adv_panel.IsShown())
-            self.assertEqual(panel.toggle_adv_btn.GetLabel(), "&Hide Advanced Settings")
+            self.assertEqual(panel.toggle_adv_btn.GetLabel(), tr("AUDIO_HIDE_ADVANCED_BTN"))
 
             # 4. Toggling again collapses it
             panel.on_toggle_advanced(None)
             self.assertFalse(panel.adv_panel.IsShown())
-            self.assertEqual(panel.toggle_adv_btn.GetLabel(), "&Show Advanced Settings")
+            self.assertEqual(panel.toggle_adv_btn.GetLabel(), tr("AUDIO_SHOW_ADVANCED_BTN"))
 
             # 5. Switching presets keeps trimmer unchecked
             for preset_idx in range(6):
@@ -765,11 +770,11 @@ class TestVersion120UpgradesAndPersonas(unittest.TestCase):
         self.assertIn("OS:", diag)
         self.assertIn("App Version: 1.4.0", diag)
 
-    def test_config_manager_v1_6_0(self):
-        """Verifies v1.6.0 configuration fields, default presets, and ticket persistence."""
+    def test_config_manager_v1_6_1(self):
+        """Verifies v1.6.1 configuration fields, default presets, and ticket persistence."""
         from config_manager import GhostWaveConfig
         cfg = GhostWaveConfig()
-        self.assertEqual(cfg.app_version, "1.6.0")
+        self.assertEqual(cfg.app_version, "1.6.1")
         self.assertEqual(cfg.language, "en")
         self.assertEqual(cfg.default_preset, "Complete Sanitization (Recommended)")
         self.assertTrue(cfg.first_run)
@@ -794,7 +799,7 @@ class TestVersion120UpgradesAndPersonas(unittest.TestCase):
 
         frame = GhostWaveFrame()
         try:
-            self.assertEqual(frame.GetTitle(), "GhostWave Studio v1.6.0")
+            self.assertEqual(frame.GetTitle(), "GhostWave Studio v1.6.1")
             self.assertIsNotNone(frame.changelog_item)
         finally:
             frame.Destroy()
@@ -834,6 +839,50 @@ class TestVersion120UpgradesAndPersonas(unittest.TestCase):
         self.assertTrue(about_dlg.text_ctrl.IsEditable() is False)
         self.assertIsNotNone(about_dlg.close_btn)
         about_dlg.Destroy()
+
+    def test_v1_6_1_dialog_and_tooltip_translations(self):
+        """Verifies Indonesian localization for Suno protocol, About, and dynamic tooltips."""
+        import wx
+        from i18n import init_translations, set_language, tr
+        from gui import SunoCheatSheetDialog, AboutDialog, AudioSanitizerPanel
+        from audio_processor import AudioProcessor
+
+        app = wx.App.Get()
+        if not app:
+            app = wx.App(False)
+
+        init_translations("id")
+        set_language("id")
+
+        frame = wx.Frame(None)
+        processor = AudioProcessor()
+        try:
+            suno_dlg = SunoCheatSheetDialog(frame)
+            try:
+                val = suno_dlg.text_ctrl.GetValue()
+                self.assertIn("PROTOKOL UNGGAH AUDIO KE SUNO AI", val)
+                self.assertIn("SELALU EKSPOR SEBAGAI WAV", val)
+            finally:
+                suno_dlg.Destroy()
+
+            about_dlg = AboutDialog(frame)
+            try:
+                val = about_dlg.text_ctrl.GetValue()
+                self.assertIn("Aplikasi desktop yang mudah diakses", val)
+                self.assertIn("Profil Pengaturan", val)
+            finally:
+                about_dlg.Destroy()
+
+            audio_panel = AudioSanitizerPanel(frame, processor, lambda msg: None)
+            try:
+                audio_panel.retranslate_ui()
+                tip = audio_panel.browse_btn.GetToolTipText()
+                self.assertEqual(tip, tr("TIP_AUDIO_BROWSE_BTN"))
+            finally:
+                audio_panel.Destroy()
+        finally:
+            frame.Destroy()
+            set_language("en")
 
 
 if __name__ == "__main__":

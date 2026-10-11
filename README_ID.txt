@@ -1,4 +1,4 @@
-GHOSTWAVE STUDIO (VERSI 1.6.0)
+GHOSTWAVE STUDIO (VERSI 1.6.1)
 PANDUAN PENGGUNA DAN PETUNJUK MEMULAI
 
 Situs Web Asli: http://technokerslab.blogspot.com/
@@ -24,7 +24,7 @@ lagu Anda tetap terdengar seperti aslinya dengan ketukan dan ritme yang utuh,
 tetapi bagi pemindai otomatis, kecocokan sidik jari lagu menjadi hilang.
 
 Semua kunci API pribadi dan pengaturan Anda disimpan secara aman di komputer
-lokal dalam brankas terenkripsi bernama ghostwave.sn. Tidak ada data yang dikirim
+lokal dalam berkas profil bernama ghostwave.sn. Tidak ada data yang dikirim
 ke server tanpa izin, dan Anda tidak perlu mengunduh model AI berukuran raksasa
 hanya untuk menjalankan aplikasi ini.
 
@@ -160,8 +160,8 @@ Ctrl+T: Membuka Pusat Tiket Dukungan.
 Ctrl+U: Membuka pemotong ABS Audio Slicer dari tab mana saja.
 Ctrl+B: Membuka editor daftar hitam musisi dan selebritas.
 Ctrl+H atau Shift+F1: Membuka panduan unggah Suno.
-Ctrl+Shift+S: Mengekspor brankas profil terenkripsi (.sn).
-Ctrl+Shift+O: Mengimpor brankas profil terenkripsi (.sn).
+Ctrl+Shift+S: Mengekspor profil pengaturan (.sn).
+Ctrl+Shift+O: Mengimpor profil pengaturan (.sn).
 Ctrl+A: Memilih seluruh teks di dalam kotak teks.
 F2: Membuka jendela Catatan Rilis / Changelog terbaru (tersedia offline dan online).
 Escape: Menutup jendela dialog yang sedang aktif.

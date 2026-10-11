@@ -3,7 +3,7 @@ Main Application Entry Point for GhostWave Studio.
 
 Supports both Accessible Desktop GUI (wxPython) and Command-Line Interface (CLI)
 for automated audio sanitization, slicing, and acoustic similarity audits.
-All user settings and API credentials are encrypted inside the proprietary .sn vault.
+All user settings and API credentials are saved in the settings profile (.sn).
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from updater import APP_VERSION
 def print_banner():
     print("=" * 64)
     print(f"GhostWave Studio v{APP_VERSION} - Audio & Lyrics Sanitizer")
-    print("Encrypted Vault (.sn) Active | Suno Preparation Engine")
+    print("Settings Profile (.sn) Active | Suno Preparation Engine")
     print("=" * 64)
 
 
@@ -29,7 +29,7 @@ def run_cli(args: argparse.Namespace) -> int:
     if not getattr(args, "no_banner", False):
         print_banner()
 
-    # Load configuration from encrypted .sn vault
+    # Load configuration from .sn profile
     vault = GhostWaveConfig.load(args.config_sn) if hasattr(args, "config_sn") and args.config_sn else GhostWaveConfig.load()
 
     processor = AudioProcessor()
@@ -69,7 +69,7 @@ def run_cli(args: argparse.Namespace) -> int:
 
     print(f"\n[GhostWave Studio] Source Audio: {os.path.basename(input_path)}")
     print(f"[GhostWave Studio] Preset: {args.preset.upper()}")
-    print(f"[GhostWave Studio] Profile Vault: Encrypted (.sn) Loaded")
+    print(f"[GhostWave Studio] Settings Profile: (.sn) Loaded")
 
     options = AudioSanitizeOptions(
         mode="cloud_api" if args.preset == "cloud" else "master_evasion",
@@ -215,7 +215,7 @@ def main():
     parser.add_argument("--tempo", type=float, default=0.94, help="Tempo factor (default: 0.94)")
     parser.add_argument("--bode-hz", type=float, default=8.5, help="Frequency shift in Hz (default: 8.5)")
     parser.add_argument("--duration", type=float, default=24.0, help="Max duration in seconds (default: 24.0)")
-    parser.add_argument("--config-sn", help="Path to encrypted GhostWave profile vault (.sn)")
+    parser.add_argument("--config-sn", help="Path to GhostWave settings profile (.sn)")
     parser.add_argument("--no-jitter", action="store_true", help="Disable timing variation jitter")
     parser.add_argument("--no-bode", action="store_true", help="Disable Bode frequency shifter")
     parser.add_argument("--no-decoy", action="store_true", help="Disable decoy harmonic injection")

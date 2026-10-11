@@ -1,5 +1,16 @@
 GhostWave Studio - Changelog & Release Notes
 
+Version: 1.6.1
+Release Date: 2026-10-11
+
+What is new:
+New on 10/11/2026:
+	Simplified the profile import and export interface by removing technical encryption jargon. The file menus, dialogs, and prompts now refer to settings profiles simply as settings profiles (.sn), making configuration backups much easier to understand.
+	The Suno upload protocol guide now fully respects your active language setting, presenting complete Indonesian guidance and step-by-step instructions when Indonesian mode is chosen.
+	The About dialog and Accessibility Guide now dynamically load full Indonesian translations when running the application in Indonesian, instead of showing English text.
+	Fixed an issue where control tooltips in both the audio processing and lyrics sanitizing panels stayed in English after switching the interface language. Tooltips now update immediately to the selected language.
+	Localized the remaining setup dialogs, including the audio slicer, word blacklist, cloud audio configuration, lyrics cloud settings, and acoustic evasion audit views, so all labels, buttons, and help descriptions appear in your active language.
+
 Version: 1.6.0
 Release Date: 2026-10-10
 

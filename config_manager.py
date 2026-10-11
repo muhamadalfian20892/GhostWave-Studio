@@ -55,7 +55,7 @@ class GhostWaveConfig:
     """
     # Metadata
     app_name: str = "GhostWave Studio"
-    app_version: str = "1.6.0"
+    app_version: str = "1.6.1"
     check_updates_on_startup: bool = True
     language: str = "en"
     first_run: bool = True

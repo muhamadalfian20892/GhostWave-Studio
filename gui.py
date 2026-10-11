@@ -54,7 +54,7 @@ class BlacklistDialog(wx.Dialog):
     def __init__(self, parent: wx.Window, lyrics_processor: LyricsProcessor):
         super().__init__(
             parent,
-            title="Edit Celebrity Blacklist",
+            title=tr("BLACKLIST_TITLE"),
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(520, 560)
         )
@@ -69,7 +69,7 @@ class BlacklistDialog(wx.Dialog):
         # Instructions Label
         instr_label = wx.StaticText(
             panel,
-            label="Edit the list of celebrity and artist names to strip (one name per line):"
+            label=tr("BLACKLIST_INSTR")
         )
         instr_label.SetName("Blacklist Instructions")
         main_sizer.Add(instr_label, 0, wx.ALL, 10)
@@ -80,7 +80,7 @@ class BlacklistDialog(wx.Dialog):
             style=wx.TE_MULTILINE | wx.TE_DONTWRAP,
             name="Celebrity Blacklist Text Area"
         )
-        self.text_ctrl.SetToolTip("Enter celebrity and artist names, one per line.")
+        self.text_ctrl.SetToolTip(tr("BLACKLIST_TIP_TEXT"))
         initial_text = "\n".join(sorted(self.processor.celebrity_blacklist, key=str.lower))
         self.text_ctrl.SetValue(initial_text)
         main_sizer.Add(self.text_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
@@ -88,19 +88,19 @@ class BlacklistDialog(wx.Dialog):
         # Bottom Buttons
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        self.reset_btn = wx.Button(panel, label="&Reset to Defaults")
+        self.reset_btn = wx.Button(panel, label=tr("BLACKLIST_BTN_RESET"))
         self.reset_btn.SetName("Reset to Defaults Button")
-        self.reset_btn.SetToolTip("Restore the default list of 100+ global artists and celebrities.")
+        self.reset_btn.SetToolTip(tr("BLACKLIST_TIP_RESET"))
         self.reset_btn.Bind(wx.EVT_BUTTON, self.on_reset)
         btn_sizer.Add(self.reset_btn, 0, wx.RIGHT, 10)
 
         btn_sizer.AddStretchSpacer()
 
-        self.cancel_btn = wx.Button(panel, wx.ID_CANCEL, label="&Cancel")
+        self.cancel_btn = wx.Button(panel, wx.ID_CANCEL, label=tr("CANCEL_BTN"))
         self.cancel_btn.SetName("Cancel Button")
         btn_sizer.Add(self.cancel_btn, 0, wx.RIGHT, 10)
 
-        self.save_btn = wx.Button(panel, wx.ID_OK, label="&Save Changes")
+        self.save_btn = wx.Button(panel, wx.ID_OK, label=tr("BLACKLIST_BTN_SAVE"))
         self.save_btn.SetName("Save Changes Button")
         self.save_btn.Bind(wx.EVT_BUTTON, self.on_save)
         self.save_btn.SetDefault()
@@ -116,8 +116,8 @@ class BlacklistDialog(wx.Dialog):
 
     def on_reset(self, event: wx.CommandEvent):
         confirm = wx.MessageBox(
-            "Are you sure you want to restore the default celebrity list?",
-            "Confirm Reset",
+            tr("BLACKLIST_CONFIRM_RESET_MSG"),
+            tr("BLACKLIST_CONFIRM_RESET_TITLE"),
             wx.YES_NO | wx.ICON_QUESTION,
             self
         )
@@ -131,8 +131,8 @@ class BlacklistDialog(wx.Dialog):
         names = [line.strip() for line in raw_text.split("\n") if line.strip()]
         if not names:
             wx.MessageBox(
-                "Blacklist cannot be completely empty.",
-                "Validation Error",
+                tr("BLACKLIST_EMPTY_ERR_MSG"),
+                tr("BLACKLIST_VALIDATION_ERR_TITLE"),
                 wx.OK | wx.ICON_WARNING,
                 self
             )
@@ -143,8 +143,8 @@ class BlacklistDialog(wx.Dialog):
             self.EndModal(wx.ID_OK)
         else:
             wx.MessageBox(
-                "Failed to save blacklist to configuration file.",
-                "File Save Error",
+                tr("BLACKLIST_SAVE_ERR_MSG"),
+                tr("BLACKLIST_SAVE_ERR_TITLE"),
                 wx.OK | wx.ICON_ERROR,
                 self
             )
@@ -159,7 +159,7 @@ class CloudApiDialog(wx.Dialog):
     def __init__(self, parent: wx.Window):
         super().__init__(
             parent,
-            title="Cloud API Settings",
+            title=tr("CLOUD_API_TITLE"),
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(560, 440)
         )
@@ -173,9 +173,7 @@ class CloudApiDialog(wx.Dialog):
 
         info_label = wx.StaticText(
             panel,
-            label="Configure Cloud API credentials to separate vocals and instrumentals remotely.\n"
-                  "All tokens are securely encrypted in the GhostWave .sn vault.\n"
-                  "Zero machine learning models or weights are downloaded to this device."
+            label=tr("CLOUD_API_INFO")
         )
         info_label.SetName("Cloud API Information Label")
         main_sizer.Add(info_label, 0, wx.ALL, 12)
@@ -184,7 +182,7 @@ class CloudApiDialog(wx.Dialog):
         grid.AddGrowableCol(1, 1)
 
         # Provider Choice
-        prov_label = wx.StaticText(panel, label="Cloud Provider:")
+        prov_label = wx.StaticText(panel, label=tr("CLOUD_API_PROVIDER_LBL"))
         prov_label.SetName("Cloud Provider Label")
         grid.Add(prov_label, 0, wx.ALIGN_CENTER_VERTICAL)
 
@@ -203,7 +201,7 @@ class CloudApiDialog(wx.Dialog):
         grid.Add(self.provider_choice, 0, wx.EXPAND)
 
         # API Token
-        token_label = wx.StaticText(panel, label="API Key / Token:")
+        token_label = wx.StaticText(panel, label=tr("CLOUD_API_TOKEN_LBL"))
         token_label.SetName("API Token Label")
         grid.Add(token_label, 0, wx.ALIGN_CENTER_VERTICAL)
 
@@ -213,11 +211,11 @@ class CloudApiDialog(wx.Dialog):
             style=wx.TE_PASSWORD,
             name="Cloud API Token Input"
         )
-        self.token_ctrl.SetToolTip("Enter your Replicate or Hugging Face API token.")
+        self.token_ctrl.SetToolTip(tr("CLOUD_API_TIP_TOKEN"))
         grid.Add(self.token_ctrl, 0, wx.EXPAND)
 
         # Endpoint URL
-        url_label = wx.StaticText(panel, label="Endpoint URL (Optional):")
+        url_label = wx.StaticText(panel, label=tr("CLOUD_API_URL_LBL"))
         url_label.SetName("Endpoint URL Label")
         grid.Add(url_label, 0, wx.ALIGN_CENTER_VERTICAL)
 
@@ -226,11 +224,11 @@ class CloudApiDialog(wx.Dialog):
             value=self.config.endpoint_url,
             name="Cloud Endpoint URL Input"
         )
-        self.url_ctrl.SetToolTip("Custom HF Space or REST webhook URL (leave blank for defaults).")
+        self.url_ctrl.SetToolTip(tr("CLOUD_API_TIP_URL"))
         grid.Add(self.url_ctrl, 0, wx.EXPAND)
 
         # Timeout Spin
-        timeout_label = wx.StaticText(panel, label="Remote Timeout (Seconds):")
+        timeout_label = wx.StaticText(panel, label=tr("CLOUD_API_TIMEOUT_LBL"))
         timeout_label.SetName("Remote Timeout Label")
         grid.Add(timeout_label, 0, wx.ALIGN_CENTER_VERTICAL)
 
@@ -247,10 +245,10 @@ class CloudApiDialog(wx.Dialog):
 
         # Bottom Buttons
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.cancel_btn = wx.Button(panel, wx.ID_CANCEL, label="&Cancel", name="Cancel Cloud Settings Button")
+        self.cancel_btn = wx.Button(panel, wx.ID_CANCEL, label=tr("CANCEL_BTN"), name="Cancel Cloud Settings Button")
         btn_sizer.Add(self.cancel_btn, 0, wx.RIGHT, 10)
 
-        self.save_btn = wx.Button(panel, wx.ID_OK, label="&Save Settings", name="Save Cloud Settings Button")
+        self.save_btn = wx.Button(panel, wx.ID_OK, label=tr("CLOUD_API_BTN_SAVE"), name="Save Cloud Settings Button")
         self.save_btn.Bind(wx.EVT_BUTTON, self.on_save)
         self.save_btn.SetDefault()
         btn_sizer.Add(self.save_btn, 0)
@@ -282,7 +280,7 @@ class LyricsCloudDialog(wx.Dialog):
     def __init__(self, parent: wx.Window):
         super().__init__(
             parent,
-            title="Lyrics Cloud AI Settings",
+            title=tr("LYRICS_CLOUD_TITLE"),
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(560, 420)
         )
@@ -296,9 +294,7 @@ class LyricsCloudDialog(wx.Dialog):
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         info_label = wx.StaticText(
             panel,
-            label="Configure remote LLM credentials for automated lyrics cloaking.\n"
-                  "API keys are encrypted inside the GhostWave .sn vault.\n"
-                  "Zero models or checkpoint files are downloaded to this device."
+            label=tr("LYRICS_CLOUD_INFO")
         )
         info_label.SetName("Lyrics Cloud Info Label")
         main_sizer.Add(info_label, 0, wx.ALL, 12)
@@ -306,7 +302,7 @@ class LyricsCloudDialog(wx.Dialog):
         grid = wx.FlexGridSizer(cols=2, vgap=12, hgap=12)
         grid.AddGrowableCol(1, 1)
 
-        prov_label = wx.StaticText(panel, label="LLM Provider:")
+        prov_label = wx.StaticText(panel, label=tr("LYRICS_CLOUD_PROVIDER_LBL"))
         prov_label.SetName("LLM Provider Label")
         grid.Add(prov_label, 0, wx.ALIGN_CENTER_VERTICAL)
 
@@ -326,7 +322,7 @@ class LyricsCloudDialog(wx.Dialog):
             self.provider_choice.SetSelection(3)
         grid.Add(self.provider_choice, 0, wx.EXPAND)
 
-        tok_label = wx.StaticText(panel, label="API Key / Token:")
+        tok_label = wx.StaticText(panel, label=tr("LYRICS_CLOUD_TOKEN_LBL"))
         tok_label.SetName("Lyrics API Token Label")
         grid.Add(tok_label, 0, wx.ALIGN_CENTER_VERTICAL)
 
@@ -336,10 +332,10 @@ class LyricsCloudDialog(wx.Dialog):
             style=wx.TE_PASSWORD,
             name="Lyrics API Token Input"
         )
-        self.token_ctrl.SetToolTip("Enter API token for remote lyrics rewriting.")
+        self.token_ctrl.SetToolTip(tr("LYRICS_CLOUD_TIP_TOKEN"))
         grid.Add(self.token_ctrl, 0, wx.EXPAND)
 
-        mod_label = wx.StaticText(panel, label="Model Identifier:")
+        mod_label = wx.StaticText(panel, label=tr("LYRICS_CLOUD_MODEL_LBL"))
         mod_label.SetName("Model Identifier Label")
         grid.Add(mod_label, 0, wx.ALIGN_CENTER_VERTICAL)
 
@@ -348,10 +344,10 @@ class LyricsCloudDialog(wx.Dialog):
             value=self.config.lyrics_cloud_model or "llama-3.3-70b-versatile",
             name="Model Identifier Input"
         )
-        self.model_ctrl.SetToolTip("Target LLM model name (e.g. llama-3.3-70b-versatile, gpt-4o-mini).")
+        self.model_ctrl.SetToolTip(tr("LYRICS_CLOUD_TIP_MODEL"))
         grid.Add(self.model_ctrl, 0, wx.EXPAND)
 
-        url_label = wx.StaticText(panel, label="Endpoint URL (Optional):")
+        url_label = wx.StaticText(panel, label=tr("LYRICS_CLOUD_URL_LBL"))
         url_label.SetName("Lyrics Endpoint URL Label")
         grid.Add(url_label, 0, wx.ALIGN_CENTER_VERTICAL)
 
@@ -360,16 +356,16 @@ class LyricsCloudDialog(wx.Dialog):
             value=self.config.lyrics_cloud_endpoint_url,
             name="Lyrics Endpoint URL Input"
         )
-        self.url_ctrl.SetToolTip("Custom base URL (leave blank for provider default).")
+        self.url_ctrl.SetToolTip(tr("LYRICS_CLOUD_TIP_URL"))
         grid.Add(self.url_ctrl, 0, wx.EXPAND)
 
         main_sizer.Add(grid, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
 
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.cancel_btn = wx.Button(panel, wx.ID_CANCEL, label="&Cancel", name="Cancel Lyrics Cloud Button")
+        self.cancel_btn = wx.Button(panel, wx.ID_CANCEL, label=tr("CANCEL_BTN"), name="Cancel Lyrics Cloud Button")
         btn_sizer.Add(self.cancel_btn, 0, wx.RIGHT, 10)
 
-        self.save_btn = wx.Button(panel, wx.ID_OK, label="&Save Settings", name="Save Lyrics Cloud Button")
+        self.save_btn = wx.Button(panel, wx.ID_OK, label=tr("LYRICS_CLOUD_BTN_SAVE"), name="Save Lyrics Cloud Button")
         self.save_btn.Bind(wx.EVT_BUTTON, self.on_save)
         self.save_btn.SetDefault()
         btn_sizer.Add(self.save_btn, 0)
@@ -400,7 +396,7 @@ class EvasionAuditDialog(wx.Dialog):
     def __init__(self, parent: wx.Window, metrics: dict, orig_file: str, sani_file: str):
         super().__init__(
             parent,
-            title="Audio Similarity Audit",
+            title=tr("AUDIT_DIALOG_TITLE"),
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(580, 500)
         )
@@ -411,7 +407,7 @@ class EvasionAuditDialog(wx.Dialog):
 
         main_sizer = wx.BoxSizer(wx.VERTICAL)
 
-        title_lbl = wx.StaticText(panel, label="Quantitative Acoustic Fingerprint & ASR Audit:")
+        title_lbl = wx.StaticText(panel, label=tr("AUDIT_HEADER_LBL"))
         title_lbl.SetName("Audit Title Label")
         font = title_lbl.GetFont()
         font.SetWeight(wx.FONTWEIGHT_BOLD)
@@ -430,29 +426,50 @@ class EvasionAuditDialog(wx.Dialog):
         drop_db = metrics.get("vocal_energy_drop_db", 0.0)
         frames = metrics.get("aligned_frames", 0)
 
-        lines = [
-            f"Original File: {os.path.basename(orig_file)}",
-            f"Sanitized File: {os.path.basename(sani_file)}",
-            "--------------------------------------------------",
-            f"Evasion Safety Rating: {verdict.upper()}",
-            "--------------------------------------------------",
-            f"• Acoustic Fingerprint (Chromaprint) Similarity: {sim:.1f}%",
-            f"• Bit Error / Hash Decorrelation Rate: {ber:.1f}%",
-            f"• Aligned Sub-fingerprint Frame Window: {frames} frames",
-            f"• Vocal Intelligibility Band Attenuation: {drop_db:.1f} dB",
-            "",
-            "DETAILED TECHNICAL ASSESSMENT:",
-            f"{metrics.get('details', '')}",
-            "",
-            "RECOMMENDATIONS FOR SUNO UPLOAD:",
-            "1. If similarity is under 35%, landmark hashes are decoupled and will pass Audible Magic.",
-            "2. If lyrics were spoken/sung, ensure vocal ducking or Cloud Stem separation was applied.",
-            "3. Exported files have all ID3 chunks, RIFF tags, and metadata completely stripped."
-        ]
+        if get_language() == "id":
+            lines = [
+                f"Berkas Asli: {os.path.basename(orig_file)}",
+                f"Berkas Hasil Sanitasi: {os.path.basename(sani_file)}",
+                "--------------------------------------------------",
+                f"Tingkat Keamanan Evasion: {verdict.upper()}",
+                "--------------------------------------------------",
+                f"• Kemiripan Sidik Jari Akustik (Chromaprint): {sim:.1f}%",
+                f"• Tingkat Bit Error / Hash Decorrelation: {ber:.1f}%",
+                f"• Frame Sub-fingerprint Terpadu: {frames} frame",
+                f"• Pelemahan Pita Intelligibility Vokal: {drop_db:.1f} dB",
+                "",
+                "PENILAIAN TEKNIS RINCI:",
+                f"{metrics.get('details', '')}",
+                "",
+                "REKOMENDASI UNGGAH SUNO:",
+                "1. Jika kemiripan di bawah 35%, hash penanda telah terurai dan akan lolos Audible Magic.",
+                "2. Jika audio berisi vokal, pastikan peredaman vokal atau isolasi stem Cloud telah diterapkan.",
+                "3. Berkas ekspor telah dibersihkan dari seluruh tag ID3, chunk RIFF, dan metadata."
+            ]
+        else:
+            lines = [
+                f"Original File: {os.path.basename(orig_file)}",
+                f"Sanitized File: {os.path.basename(sani_file)}",
+                "--------------------------------------------------",
+                f"Evasion Safety Rating: {verdict.upper()}",
+                "--------------------------------------------------",
+                f"• Acoustic Fingerprint (Chromaprint) Similarity: {sim:.1f}%",
+                f"• Bit Error / Hash Decorrelation Rate: {ber:.1f}%",
+                f"• Aligned Sub-fingerprint Frame Window: {frames} frames",
+                f"• Vocal Intelligibility Band Attenuation: {drop_db:.1f} dB",
+                "",
+                "DETAILED TECHNICAL ASSESSMENT:",
+                f"{metrics.get('details', '')}",
+                "",
+                "RECOMMENDATIONS FOR SUNO UPLOAD:",
+                "1. If similarity is under 35%, landmark hashes are decoupled and will pass Audible Magic.",
+                "2. If lyrics were spoken/sung, ensure vocal ducking or Cloud Stem separation was applied.",
+                "3. Exported files have all ID3 chunks, RIFF tags, and metadata completely stripped."
+            ]
         report_ctrl.SetValue("\n".join(lines))
         main_sizer.Add(report_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
-        ok_btn = wx.Button(panel, wx.ID_OK, label="&Close Audit", name="Close Audit Button")
+        ok_btn = wx.Button(panel, wx.ID_OK, label=tr("AUDIT_BTN_CLOSE"), name="Close Audit Button")
         ok_btn.SetDefault()
         main_sizer.Add(ok_btn, 0, wx.ALIGN_RIGHT | wx.RIGHT | wx.BOTTOM, 10)
 
@@ -472,7 +489,7 @@ class SunoCheatSheetDialog(wx.Dialog):
     def __init__(self, parent: wx.Window):
         super().__init__(
             parent,
-            title="Suno Upload Guide & Tips",
+            title=tr("SUNO_GUIDE_TITLE"),
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(640, 560)
         )
@@ -483,75 +500,127 @@ class SunoCheatSheetDialog(wx.Dialog):
 
         main_sizer = wx.BoxSizer(wx.VERTICAL)
 
-        title_lbl = wx.StaticText(panel, label="Battle-Tested Suno Upload Protocol (Audible Magic & VIBE Evasion):")
+        title_lbl = wx.StaticText(panel, label=tr("SUNO_GUIDE_HEADER_LBL"))
         title_lbl.SetName("Protocol Title Label")
         font = title_lbl.GetFont()
         font.SetWeight(wx.FONTWEIGHT_BOLD)
         title_lbl.SetFont(font)
         main_sizer.Add(title_lbl, 0, wx.ALL, 10)
 
-        cheat_ctrl = wx.TextCtrl(
+        self.text_ctrl = wx.TextCtrl(
             panel,
             style=wx.TE_MULTILINE | wx.TE_READONLY,
             name="Suno Protocol Text"
         )
+        cheat_ctrl = self.text_ctrl
 
-        protocol_lines = [
-            "==================================================================",
-            "SUNO AI ANTI-BLOCK UPLOAD PROTOCOL (STUDY & RESEARCH REFERENCE)",
-            "Original Website: http://technokerslab.blogspot.com/",
-            "==================================================================",
-            "",
-            "1. ALWAYS EXPORT AS LOSSLESS 16-BIT PCM WAV (NOT MP3):",
-            "   • MP3 encoding inserts frame headers, encoder delay, and padding bits",
-            "     that align with standard MP3 hash buckets.",
-            "   • 16-bit PCM WAV contains clean, raw linear samples with zero metadata,",
-            "     making landmark extraction less prone to container-fingerprint leaks.",
-            "",
-            "2. THE ABS (ANNOYING BUT SUCCESSFUL) LIBRARY UPLOAD ROUTE:",
-            "   • CRITICAL: DO NOT upload audio directly inside the 'Create' / Studio page!",
-            "     Suno's Create page runs an aggressive, synchronous Audible Magic check.",
-            "   • INSTEAD: Navigate to 'Library' -> click 'Upload Audio' button.",
-            "   • Upload your sanitized WAV chunk there first. Suno's library ingestion",
-            "     uses a separate background worker queue with significantly relaxed rules.",
-            "   • Once uploaded to Library, click the '...' menu on the track and choose",
-            "     'Extend' or 'Create with Audio'.",
-            "",
-            "3. KEEP DURATION BETWEEN 18 AND 25 SECONDS (SWEET SPOT):",
-            "   • Full songs provide hundreds of contiguous landmark constellations.",
-            "   • Audible Magic requires at least 5-8 contiguous seconds of constellation",
-            "     matches to produce a high-confidence match.",
-            "   • Slicing your audio into 20-24s chunks destroys long-horizon alignment",
-            "     and severely degrades Suno's VIBE neural embedding model.",
-            "   • Use the built-in 'ABS Audio Slicer' tool to split tracks automatically.",
-            "",
-            "4. CLEAR BROWSER SESSION OR USE INCOGNITO IF RECENTLY BLOCKED:",
-            "   • If Suno displayed 'This audio matches an existing recording', your",
-            "     account session and IP have an elevated risk flag for 30-60 minutes.",
-            "   • Open an Incognito / Private Window or clear Suno cookies and cache",
-            "     before uploading the sanitized file.",
-            "",
-            "5. VOCAL ANNIHILATION & LYRICS MODERATION:",
-            "   • Lead vocals contain the most prominent biometric and melodic markers.",
-            "   • Always use 'Complete Sanitization' (or Cloud API Demucs isolation)",
-            "     to eradicate the center vocal channel.",
-            "   • If pasting lyrics into Suno, use the 'Lyrics Sanitizer' tab to strip",
-            "     celebrity and artist names to avoid prompt filter rejections.",
-            "",
-            "6. HARMONIC DRONE & PREAMBLE MASKING:",
-            "   • The 'Continuous Camouflage Bed' injects an analog fifths drone at -26 dBFS",
-            "     which populates the STFT spectrogram with thousands of decoy energy peaks,",
-            "     preventing Audible Magic's peak pickers from indexing original audio.",
-            "==================================================================",
-            "Open Source Notice:",
-            "GhostWave Studio is open source software. For source code and contributions,",
-            "please see README.txt.",
-            "=================================================================="
-        ]
+        if get_language() == "id":
+            protocol_lines = [
+                "==================================================================",
+                "PROTOKOL UNGGAH AUDIO KE SUNO AI (REFERENSI RISET DAN PENGUJIAN)",
+                "Situs Web Asli: http://technokerslab.blogspot.com/",
+                "==================================================================",
+                "",
+                "1. SELALU EKSPOR SEBAGAI WAV PCM 16-BIT LOSSLESS (BUKAN MP3):",
+                "   • Pengodean MP3 menyisipkan header frame, penundaan encoder, dan bit padding",
+                "     yang sejajar dengan hash standar MP3.",
+                "   • WAV PCM 16-bit berisi sampel linear murni tanpa metadata sama sekali,",
+                "     sehingga ekstraksi landmark tidak terdeteksi oleh pemindai kontainer.",
+                "",
+                "2. RUTE UNGGAH PUSTAKA ABS (LEBIH AMAN):",
+                "   • PENTING: JANGAN mengunggah audio langsung di halaman 'Create' / Studio!",
+                "     Halaman Create Suno menjalankan pemeriksaan sinkron Audible Magic secara ketat.",
+                "   • SEBALIKNYA: Buka tab 'Library' -> klik tombol 'Upload Audio'.",
+                "   • Unggah potongan WAV hasil sanitasi Anda di sana terlebih dahulu. Pemrosesan",
+                "     di Library menggunakan antrean latar belakang dengan aturan yang jauh lebih fleksibel.",
+                "   • Setelah terunggah di Library, klik menu '...' pada trek tersebut lalu pilih",
+                "     'Extend' atau 'Create with Audio'.",
+                "",
+                "3. PERTAHANKAN DURASI ANTARA 18 HINGGA 25 DETIK (RENTANG TERBAIK):",
+                "   • Lagu lengkap menyediakan ratusan konstelasi penanda berurutan.",
+                "   • Audible Magic membutuhkan setidaknya 5-8 detik kecocokan konstelasi berurutan",
+                "     untuk menghasilkan deteksi dengan tingkat keyakinan tinggi.",
+                "   • Memotong audio menjadi klip 20-24 detik merusak keselarasan jangka panjang",
+                "     dan menyulitkan model embedding saraf VIBE milik Suno.",
+                "   • Gunakan fitur bawaan 'Audio Slicer' untuk memotong trek secara otomatis.",
+                "",
+                "4. BERSIHKAN SESI BROWSER ATAU GUNAKAN MODE PENYAMARAN JIKA BARU DIBLOKIR:",
+                "   • Jika Suno menampilkan 'This audio matches an existing recording', sesi akun",
+                "     dan IP Anda akan ditandai berisiko tinggi selama 30-60 menit.",
+                "   • Buka Jendela Penyamaran (Incognito / Private Window) atau hapus cookie dan cache Suno",
+                "     sebelum mengunggah berkas yang telah disanitasi.",
+                "",
+                "5. PEREDAMAN VOKAL DAN MODERASI LIRIK:",
+                "   • Vokal utama memiliki penanda biometrik dan melodi yang paling mudah dikenali.",
+                "   • Gunakan preset sanitasi vokal atau isolasi stem Cloud untuk meredam kanal vokal tengah.",
+                "   • Jika menempelkan lirik ke Suno, gunakan tab 'Lyrics Sanitizer' untuk menghapus",
+                "     nama selebritas dan artis agar tidak ditolak oleh filter teks prompt.",
+                "",
+                "6. VARIASI HARMONIK DAN JEDA AWAL:",
+                "   • Filter variasi harmonik mengisi spektrogram dengan titik energi acak",
+                "     yang mengalihkan perhatian sistem pemindai dari audio asli.",
+                "==================================================================",
+                "Pemberitahuan Sumber Terbuka:",
+                "GhostWave Studio adalah perangkat lunak sumber terbuka. Untuk kode sumber",
+                "dan kontribusi, silakan lihat README_ID.txt.",
+                "=================================================================="
+            ]
+        else:
+            protocol_lines = [
+                "==================================================================",
+                "SUNO AI ANTI-BLOCK UPLOAD PROTOCOL (STUDY & RESEARCH REFERENCE)",
+                "Original Website: http://technokerslab.blogspot.com/",
+                "==================================================================",
+                "",
+                "1. ALWAYS EXPORT AS LOSSLESS 16-BIT PCM WAV (NOT MP3):",
+                "   • MP3 encoding inserts frame headers, encoder delay, and padding bits",
+                "     that align with standard MP3 hash buckets.",
+                "   • 16-bit PCM WAV contains clean, raw linear samples with zero metadata,",
+                "     making landmark extraction less prone to container-fingerprint leaks.",
+                "",
+                "2. THE ABS (ANNOYING BUT SUCCESSFUL) LIBRARY UPLOAD ROUTE:",
+                "   • CRITICAL: DO NOT upload audio directly inside the 'Create' / Studio page!",
+                "     Suno's Create page runs an aggressive, synchronous Audible Magic check.",
+                "   • INSTEAD: Navigate to 'Library' -> click 'Upload Audio' button.",
+                "   • Upload your sanitized WAV chunk there first. Suno's library ingestion",
+                "     uses a separate background worker queue with significantly relaxed rules.",
+                "   • Once uploaded to Library, click the '...' menu on the track and choose",
+                "     'Extend' or 'Create with Audio'.",
+                "",
+                "3. KEEP DURATION BETWEEN 18 AND 25 SECONDS (SWEET SPOT):",
+                "   • Full songs provide hundreds of contiguous landmark constellations.",
+                "   • Audible Magic requires at least 5-8 contiguous seconds of constellation",
+                "     matches to produce a high-confidence match.",
+                "   • Slicing your audio into 20-24s chunks destroys long-horizon alignment",
+                "     and severely degrades Suno's VIBE neural embedding model.",
+                "   • Use the built-in 'Audio Slicer' tool to split tracks automatically.",
+                "",
+                "4. CLEAR BROWSER SESSION OR USE INCOGNITO IF RECENTLY BLOCKED:",
+                "   • If Suno displayed 'This audio matches an existing recording', your",
+                "     account session and IP have an elevated risk flag for 30-60 minutes.",
+                "   • Open an Incognito / Private Window or clear Suno cookies and cache",
+                "     before uploading the sanitized file.",
+                "",
+                "5. VOCAL REDUCTION & LYRICS MODERATION:",
+                "   • Lead vocals contain the most prominent biometric and melodic markers.",
+                "   • Always use vocal sanitization or Cloud stem isolation",
+                "     to attenuate the center vocal channel.",
+                "   • If pasting lyrics into Suno, use the 'Lyrics Sanitizer' tab to strip",
+                "     celebrity and artist names to avoid prompt filter rejections.",
+                "",
+                "6. HARMONIC VARIATION & PREAMBLE MASKING:",
+                "   • Harmonic variation populates the spectrogram with subtle energy variations,",
+                "     preventing fingerprint matchers from indexing original audio.",
+                "==================================================================",
+                "Open Source Notice:",
+                "GhostWave Studio is open source software. For source code and contributions,",
+                "please see README.txt.",
+                "=================================================================="
+            ]
         cheat_ctrl.SetValue("\n".join(protocol_lines))
         main_sizer.Add(cheat_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
-        ok_btn = wx.Button(panel, wx.ID_OK, label="&Close Protocol", name="Close Protocol Button")
+        ok_btn = wx.Button(panel, wx.ID_OK, label=tr("SUNO_GUIDE_BTN_CLOSE"), name="Close Protocol Button")
         ok_btn.SetDefault()
         main_sizer.Add(ok_btn, 0, wx.ALIGN_RIGHT | wx.RIGHT | wx.BOTTOM, 10)
 
@@ -571,7 +640,7 @@ class AbsAudioSlicerDialog(wx.Dialog):
     def __init__(self, parent: wx.Window, audio_processor: AudioProcessor, initial_file: Optional[str] = None):
         super().__init__(
             parent,
-            title="Audio Slicer for Suno",
+            title=tr("SLICER_TITLE"),
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(580, 520)
         )
@@ -586,27 +655,26 @@ class AbsAudioSlicerDialog(wx.Dialog):
 
         info_lbl = wx.StaticText(
             panel,
-            label="Slices audio into clean 20-24s 16-bit PCM WAV chunks with zero padding or metadata.\n"
-                  "Uploading short chunks to Suno Library prevents Audible Magic long-horizon matches."
+            label=tr("SLICER_INFO")
         )
         info_lbl.SetName("ABS Slicer Description Label")
         main_sizer.Add(info_lbl, 0, wx.ALL, 10)
 
         # Source File Picker
-        file_box = wx.StaticBox(panel, label="Source Audio File")
+        file_box = wx.StaticBox(panel, label=tr("SLICER_GROUP_SOURCE"))
         file_box.SetName("Slicer Source File Group")
         fb_sizer = wx.StaticBoxSizer(file_box, wx.HORIZONTAL)
 
         self.file_path_ctrl = wx.TextCtrl(panel, style=wx.TE_READONLY, name="Slicer Audio File Path")
-        self.file_path_ctrl.SetToolTip("Path to audio file to slice.")
+        self.file_path_ctrl.SetToolTip(tr("SLICER_TIP_PATH"))
         if initial_file and os.path.exists(initial_file):
             self.file_path_ctrl.SetValue(initial_file)
         else:
-            self.file_path_ctrl.SetValue("No file selected.")
+            self.file_path_ctrl.SetValue(tr("AUDIO_NO_FILE_SELECTED"))
         fb_sizer.Add(self.file_path_ctrl, 1, wx.EXPAND | wx.RIGHT, 8)
 
-        self.browse_btn = wx.Button(panel, label="&Browse...", name="Browse Slicer Audio File Button")
-        self.browse_btn.SetToolTip("Select source audio file to slice.")
+        self.browse_btn = wx.Button(panel, label=tr("SLICER_BTN_BROWSE"), name="Browse Slicer Audio File Button")
+        self.browse_btn.SetToolTip(tr("SLICER_TIP_BROWSE"))
         self.browse_btn.Bind(wx.EVT_BUTTON, self.on_browse)
         fb_sizer.Add(self.browse_btn, 0)
         main_sizer.Add(fb_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
@@ -615,7 +683,7 @@ class AbsAudioSlicerDialog(wx.Dialog):
         grid = wx.FlexGridSizer(cols=2, vgap=10, hgap=12)
         grid.AddGrowableCol(1, 1)
 
-        dur_lbl = wx.StaticText(panel, label="Chunk Duration (Seconds):")
+        dur_lbl = wx.StaticText(panel, label=tr("SLICER_CHUNK_LBL"))
         dur_lbl.SetName("Chunk Duration Label")
         grid.Add(dur_lbl, 0, wx.ALIGN_CENTER_VERTICAL)
 
@@ -628,16 +696,16 @@ class AbsAudioSlicerDialog(wx.Dialog):
             name="Chunk Duration Seconds Input"
         )
         self.chunk_spin.SetDigits(1)
-        self.chunk_spin.SetToolTip("Optimal safe chunk duration for Suno Library is 20.0 to 24.0 seconds.")
+        self.chunk_spin.SetToolTip(tr("SLICER_TIP_CHUNK"))
         grid.Add(self.chunk_spin, 0, wx.EXPAND)
 
-        out_dir_lbl = wx.StaticText(panel, label="Output Directory:")
+        out_dir_lbl = wx.StaticText(panel, label=tr("SLICER_OUT_DIR_LBL"))
         out_dir_lbl.SetName("Output Directory Label")
         grid.Add(out_dir_lbl, 0, wx.ALIGN_CENTER_VERTICAL)
 
         out_dir_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.out_dir_ctrl = wx.TextCtrl(panel, name="Slicer Output Directory Path")
-        self.out_dir_ctrl.SetToolTip("Directory where chunk files will be saved.")
+        self.out_dir_ctrl.SetToolTip(tr("SLICER_TIP_OUT_DIR"))
         if initial_file and os.path.exists(initial_file):
             default_dir = os.path.join(os.path.dirname(initial_file), "suno_chunks")
         else:
@@ -645,8 +713,8 @@ class AbsAudioSlicerDialog(wx.Dialog):
         self.out_dir_ctrl.SetValue(default_dir)
         out_dir_sizer.Add(self.out_dir_ctrl, 1, wx.EXPAND | wx.RIGHT, 8)
 
-        self.browse_dir_btn = wx.Button(panel, label="Bro&wse Folder...", name="Browse Slicer Output Directory Button")
-        self.browse_dir_btn.SetToolTip("Choose destination directory for slices.")
+        self.browse_dir_btn = wx.Button(panel, label=tr("SLICER_BTN_BROWSE_DIR"), name="Browse Slicer Output Directory Button")
+        self.browse_dir_btn.SetToolTip(tr("SLICER_TIP_BROWSE_DIR"))
         self.browse_dir_btn.Bind(wx.EVT_BUTTON, self.on_browse_dir)
         out_dir_sizer.Add(self.browse_dir_btn, 0)
         grid.Add(out_dir_sizer, 1, wx.EXPAND)
@@ -655,8 +723,8 @@ class AbsAudioSlicerDialog(wx.Dialog):
 
         # Slice Action Button & Gauge
         action_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.slice_btn = wx.Button(panel, label="&Generate Suno Chunks", name="Generate Suno Chunks Button")
-        self.slice_btn.SetToolTip("Split audio into lossless WAV chunks.")
+        self.slice_btn = wx.Button(panel, label=tr("SLICER_BTN_START"), name="Generate Suno Chunks Button")
+        self.slice_btn.SetToolTip(tr("SLICER_TIP_START"))
         self.slice_btn.Bind(wx.EVT_BUTTON, self.on_slice)
         action_sizer.Add(self.slice_btn, 0, wx.RIGHT, 10)
 
@@ -665,7 +733,7 @@ class AbsAudioSlicerDialog(wx.Dialog):
         main_sizer.Add(action_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         # Output Log TextCtrl
-        log_lbl = wx.StaticText(panel, label="Slicer Generation Log:")
+        log_lbl = wx.StaticText(panel, label=tr("SLICER_TIP_LOG"))
         log_lbl.SetName("Slicer Generation Log Label")
         main_sizer.Add(log_lbl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 4)
 
@@ -674,12 +742,12 @@ class AbsAudioSlicerDialog(wx.Dialog):
             style=wx.TE_MULTILINE | wx.TE_READONLY,
             name="Slicer Generation Log"
         )
-        self.log_ctrl.SetToolTip("Log of sliced audio chunks.")
+        self.log_ctrl.SetToolTip(tr("SLICER_TIP_LOG"))
         main_sizer.Add(self.log_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         # Close button
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.close_btn = wx.Button(panel, wx.ID_CANCEL, label="&Close", name="Close Slicer Dialog Button")
+        self.close_btn = wx.Button(panel, wx.ID_CANCEL, label=tr("CLOSE_BTN"), name="Close Slicer Dialog Button")
         btn_sizer.Add(self.close_btn, 0)
         main_sizer.Add(btn_sizer, 0, wx.ALIGN_RIGHT | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
@@ -953,7 +1021,7 @@ class SupportTicketDialog(wx.Dialog):
             name="Ticket Category Selection"
         )
         self.category_choice.SetSelection(0)
-        self.category_choice.SetToolTip("Select the category that best describes your inquiry.")
+        self.category_choice.SetToolTip(tr("TICKET_TIP_CATEGORY"))
         cat_sizer.Add(self.category_choice, 1, wx.EXPAND)
         sizer.Add(cat_sizer, 0, wx.EXPAND | wx.ALL, 8)
 
@@ -963,7 +1031,7 @@ class SupportTicketDialog(wx.Dialog):
         sizer.Add(title_lbl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
 
         self.title_ctrl = wx.TextCtrl(page, name="Ticket Title Input")
-        self.title_ctrl.SetToolTip("Short summary of the issue or request.")
+        self.title_ctrl.SetToolTip(tr("TICKET_TIP_TITLE"))
         sizer.Add(self.title_ctrl, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
         # Description Row
@@ -972,7 +1040,7 @@ class SupportTicketDialog(wx.Dialog):
         sizer.Add(desc_lbl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
 
         self.desc_ctrl = wx.TextCtrl(page, style=wx.TE_MULTILINE, name="Ticket Description Input")
-        self.desc_ctrl.SetToolTip("Provide detailed steps to reproduce the problem or explain your inquiry.")
+        self.desc_ctrl.SetToolTip(tr("TICKET_TIP_DESC"))
         sizer.Add(self.desc_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
         # Attach Diagnostics Checkbox
@@ -1097,7 +1165,7 @@ class SupportTicketDialog(wx.Dialog):
             self.reply_ctrl.SetToolTip(tr("TICKET_CLOSED_TOOLTIP"))
             self.ticket_status_lbl.SetLabel(f"#{t_id} - {t_title} ({status_text}) - {tr('TICKET_CLOSED_NOTICE')}")
         else:
-            self.reply_ctrl.SetToolTip("Enter your reply message here.")
+            self.reply_ctrl.SetToolTip(tr("TICKET_TIP_REPLY"))
             self.ticket_status_lbl.SetLabel(f"#{t_id} - {t_title} ({status_text})")
 
         lines = [
@@ -1276,7 +1344,7 @@ class AccessibilityGuideDialog(wx.Dialog):
     def __init__(self, parent: Optional[wx.Window] = None):
         super().__init__(
             parent,
-            title="Accessibility Guide",
+            title=tr("ACCESSIBILITY_TITLE"),
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(640, 560)
         )
@@ -1289,53 +1357,97 @@ class AccessibilityGuideDialog(wx.Dialog):
 
         header_label = wx.StaticText(
             panel,
-            label="GhostWave Studio Keyboard Navigation and Screen Reader Shortcuts:"
+            label=tr("ACCESSIBILITY_HEADER")
         )
         header_label.SetName("Accessibility Guide Header Label")
         main_sizer.Add(header_label, 0, wx.ALL, 10)
 
-        guide_content = (
-            f"GhostWave Studio v{APP_VERSION}\n"
-            "Screen Reader Accessibility and Keyboard Navigation Manual\n\n"
-            "Original Website: http://technokerslab.blogspot.com/\n\n"
-            "Overview:\n"
-            "GhostWave Studio is designed with an accessibility-first architecture.\n"
-            "All controls provide explicit MSAA and UI Automation accessible names.\n"
-            "Focus order strictly follows visual layout and logical workflow.\n\n"
-            "General Navigation:\n"
-            "  Tab: Move focus forward to the next interactive control.\n"
-            "  Shift+Tab: Move focus backward to the previous interactive control.\n"
-            "  Ctrl+Tab: Switch forward between Audio Sanitizer and Lyrics Sanitizer tabs.\n"
-            "  Ctrl+Shift+Tab: Switch backward between tabs.\n"
-            "  Escape: Dismiss active modal dialogs and popup sheets.\n"
-            "  F1: Open this accessibility guide.\n"
-            "  F2: View What's New and Changelog.\n"
-            "  Ctrl+T: Open Support Ticket center.\n"
-            "  Ctrl+H or Shift+F1: Open the Suno Upload Guide and Tips.\n\n"
-            "Audio Sanitizer Tab (Alt+1 or Ctrl+Tab):\n"
-            "  Alt+B: Browse for input audio file.\n"
-            "  Alt+P: Process and export sanitized audio.\n"
-            "  Alt+E: Run audio similarity audit.\n"
-            "  Alt+S: Toggle advanced settings panel or open Audio Slicer.\n"
-            "  Alt+A: Open Cloud API settings dialog.\n"
-            "  Ctrl+U: Launch Audio Slicer from any tab.\n"
-            "  Ctrl+Shift+S: Export encrypted configuration profile (.sn).\n"
-            "  Ctrl+Shift+O: Import encrypted configuration profile (.sn).\n\n"
-            "Lyrics Sanitizer Tab (Alt+2 or Ctrl+Tab):\n"
-            "  Alt+S: Sanitize lyrics.\n"
-            "  Alt+C: Copy sanitized lyrics output to system clipboard.\n"
-            "  Alt+L: Clear lyrics input and output fields.\n"
-            "  Alt+M: Load sample lyrics.\n"
-            "  Ctrl+B: Open celebrity and artist blacklist editor.\n"
-            "  Ctrl+L: Open Cloud LLM settings dialog.\n\n"
-            "Screen Reader Compatibility:\n"
-            "Tested with NVDA 2023+, JAWS 2023+, and Windows Narrator.\n"
-            "All status updates are announced via status bar text and system audio cues.\n\n"
-            "Support and Inquiries:\n"
-            "For assistance, questions, or bug reports, email hafiyanajah@gmail.com or submit an in-app support ticket (Ctrl+T).\n\n"
-            "Open Source Notice:\n"
-            "GhostWave Studio is open source software. For source code and contributions, please see README.txt."
-        )
+        if get_language() == "id":
+            guide_content = (
+                f"GhostWave Studio v{APP_VERSION}\n"
+                "Panduan Aksesibilitas Pembaca Layar dan Navigasi Keyboard\n\n"
+                "Situs Web Asli: http://technokerslab.blogspot.com/\n\n"
+                "Ikhtisar:\n"
+                "GhostWave Studio dirancang dengan arsitektur yang mengutamakan aksesibilitas.\n"
+                "Semua kontrol menyediakan nama aksesibel MSAA dan UI Automation yang jelas.\n"
+                "Urutan fokus mengikuti tata letak visual dan alur kerja logis.\n\n"
+                "Navigasi Umum:\n"
+                "  Tab: Berpindah maju ke kontrol interaktif berikutnya.\n"
+                "  Shift+Tab: Berpindah mundur ke kontrol interaktif sebelumnya.\n"
+                "  Ctrl+Tab: Berpindah antara tab Audio Sanitizer dan Lyrics Sanitizer.\n"
+                "  Ctrl+Shift+Tab: Berpindah mundur antar tab.\n"
+                "  Escape: Menutup jendela dialog dan panel popup yang aktif.\n"
+                "  F1: Membuka panduan aksesibilitas ini.\n"
+                "  F2: Melihat Catatan Rilis dan Changelog.\n"
+                "  Ctrl+T: Membuka Pusat Tiket Dukungan.\n"
+                "  Ctrl+H atau Shift+F1: Membuka Panduan dan Tips Unggah Suno.\n\n"
+                "Tab Audio Sanitizer (Alt+1 atau Ctrl+Tab):\n"
+                "  Alt+B: Jelajahi berkas audio masukan.\n"
+                "  Alt+P: Proses dan ekspor audio hasil sanitasi.\n"
+                "  Alt+E: Jalankan audit kemiripan audio.\n"
+                "  Alt+S: Tampilkan/sembunyikan pengaturan lanjutan atau buka Pemotong Audio.\n"
+                "  Alt+A: Buka pengaturan API Cloud.\n"
+                "  Ctrl+U: Buka Pemotong Audio dari tab mana saja.\n"
+                "  Ctrl+Shift+S: Ekspor profil pengaturan (.sn).\n"
+                "  Ctrl+Shift+O: Impor profil pengaturan (.sn).\n\n"
+                "Tab Lyrics Sanitizer (Alt+2 atau Ctrl+Tab):\n"
+                "  Alt+S: Proses sanitasi lirik.\n"
+                "  Alt+C: Salin teks lirik hasil sanitasi ke papan klip.\n"
+                "  Alt+L: Bersihkan teks masukan dan keluaran lirik.\n"
+                "  Alt+M: Muat contoh lirik uji coba.\n"
+                "  Ctrl+B: Buka editor daftar hitam nama artis dan selebriti.\n"
+                "  Ctrl+L: Buka pengaturan AI Cloud lirik.\n\n"
+                "Kompatibilitas Pembaca Layar:\n"
+                "Telah diuji dengan NVDA 2023+, JAWS 2023+, dan Windows Narrator.\n"
+                "Semua pembaruan status disampaikan melalui teks bilah status dan sinyal audio sistem.\n\n"
+                "Dukungan dan Pertanyaan:\n"
+                "Untuk bantuan, pertanyaan, atau laporan masalah, kirim email ke hafiyanajah@gmail.com atau buat tiket dukungan (Ctrl+T).\n\n"
+                "Pemberitahuan Sumber Terbuka:\n"
+                "GhostWave Studio adalah perangkat lunak sumber terbuka. Untuk kode sumber dan kontribusi, silakan lihat README_ID.txt."
+            )
+        else:
+            guide_content = (
+                f"GhostWave Studio v{APP_VERSION}\n"
+                "Screen Reader Accessibility and Keyboard Navigation Manual\n\n"
+                "Original Website: http://technokerslab.blogspot.com/\n\n"
+                "Overview:\n"
+                "GhostWave Studio is designed with an accessibility-first architecture.\n"
+                "All controls provide explicit MSAA and UI Automation accessible names.\n"
+                "Focus order strictly follows visual layout and logical workflow.\n\n"
+                "General Navigation:\n"
+                "  Tab: Move focus forward to the next interactive control.\n"
+                "  Shift+Tab: Move focus backward to the previous interactive control.\n"
+                "  Ctrl+Tab: Switch forward between Audio Sanitizer and Lyrics Sanitizer tabs.\n"
+                "  Ctrl+Shift+Tab: Switch backward between tabs.\n"
+                "  Escape: Dismiss active modal dialogs and popup sheets.\n"
+                "  F1: Open this accessibility guide.\n"
+                "  F2: View What's New and Changelog.\n"
+                "  Ctrl+T: Open Support Ticket center.\n"
+                "  Ctrl+H or Shift+F1: Open the Suno Upload Guide and Tips.\n\n"
+                "Audio Sanitizer Tab (Alt+1 or Ctrl+Tab):\n"
+                "  Alt+B: Browse for input audio file.\n"
+                "  Alt+P: Process and export sanitized audio.\n"
+                "  Alt+E: Run audio similarity audit.\n"
+                "  Alt+S: Toggle advanced settings panel or open Audio Slicer.\n"
+                "  Alt+A: Open Cloud API settings dialog.\n"
+                "  Ctrl+U: Launch Audio Slicer from any tab.\n"
+                "  Ctrl+Shift+S: Export configuration profile (.sn).\n"
+                "  Ctrl+Shift+O: Import configuration profile (.sn).\n\n"
+                "Lyrics Sanitizer Tab (Alt+2 or Ctrl+Tab):\n"
+                "  Alt+S: Sanitize lyrics.\n"
+                "  Alt+C: Copy sanitized lyrics output to system clipboard.\n"
+                "  Alt+L: Clear lyrics input and output fields.\n"
+                "  Alt+M: Load sample lyrics.\n"
+                "  Ctrl+B: Open celebrity and artist blacklist editor.\n"
+                "  Ctrl+L: Open Cloud LLM settings dialog.\n\n"
+                "Screen Reader Compatibility:\n"
+                "Tested with NVDA 2023+, JAWS 2023+, and Windows Narrator.\n"
+                "All status updates are announced via status bar text and system audio cues.\n\n"
+                "Support and Inquiries:\n"
+                "For assistance, questions, or bug reports, email hafiyanajah@gmail.com or submit an in-app support ticket (Ctrl+T).\n\n"
+                "Open Source Notice:\n"
+                "GhostWave Studio is open source software. For source code and contributions, please see README.txt."
+            )
 
         self.text_ctrl = wx.TextCtrl(
             panel,
@@ -1343,17 +1455,17 @@ class AccessibilityGuideDialog(wx.Dialog):
             style=wx.TE_MULTILINE | wx.TE_READONLY,
             name="Accessibility Guide Read-Only Text Area"
         )
-        self.text_ctrl.SetToolTip("Read-only accessibility and shortcut instructions.")
+        self.text_ctrl.SetToolTip(tr("ACCESSIBILITY_TIP_TEXT"))
         main_sizer.Add(self.text_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         self.copy_btn = wx.Button(
             panel,
-            label="&Copy Guide to Clipboard",
+            label=tr("ACCESSIBILITY_BTN_COPY"),
             name="Copy Guide to Clipboard Button"
         )
-        self.copy_btn.SetToolTip("Copy the full accessibility guide text to clipboard.")
+        self.copy_btn.SetToolTip(tr("ACCESSIBILITY_TIP_COPY"))
         self.copy_btn.Bind(wx.EVT_BUTTON, self.on_copy)
         btn_sizer.Add(self.copy_btn, 0, wx.RIGHT, 10)
 
@@ -1362,10 +1474,10 @@ class AccessibilityGuideDialog(wx.Dialog):
         self.close_btn = wx.Button(
             panel,
             wx.ID_CANCEL,
-            label="&Close Guide",
+            label=tr("ACCESSIBILITY_BTN_CLOSE"),
             name="Close Accessibility Guide Button"
         )
-        self.close_btn.SetToolTip("Close this accessibility guide dialog (Hotkey: Escape).")
+        self.close_btn.SetToolTip(tr("ACCESSIBILITY_TIP_CLOSE"))
         self.close_btn.SetDefault()
         btn_sizer.Add(self.close_btn, 0)
 
@@ -1403,7 +1515,7 @@ class ChangelogDialog(wx.Dialog):
     def __init__(self, parent: Optional[wx.Window] = None):
         super().__init__(
             parent,
-            title="What's New",
+            title=tr("CHANGELOG_DIALOG_TITLE"),
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(640, 560)
         )
@@ -1429,17 +1541,17 @@ class ChangelogDialog(wx.Dialog):
             style=wx.TE_MULTILINE | wx.TE_READONLY | wx.BORDER_THEME,
             name="Changelog and Release Notes Text Area"
         )
-        self.text_ctrl.SetToolTip("Read-only view of changes and release notes.")
+        self.text_ctrl.SetToolTip(tr("CHANGELOG_TIP_TEXT"))
         main_sizer.Add(self.text_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         self.refresh_btn = wx.Button(
             panel,
-            label="&Refresh Notes",
+            label=tr("CHANGELOG_REFRESH_BTN"),
             name="Refresh Changelog Button"
         )
-        self.refresh_btn.SetToolTip("Check for and download the latest release notes.")
+        self.refresh_btn.SetToolTip(tr("CHANGELOG_TIP_REFRESH"))
         self.refresh_btn.Bind(wx.EVT_BUTTON, self.on_refresh)
         btn_sizer.Add(self.refresh_btn, 0, wx.RIGHT, 10)
 
@@ -1448,7 +1560,7 @@ class ChangelogDialog(wx.Dialog):
             label=f"&{tr('COPY_BTN')}",
             name="Copy Changelog to Clipboard Button"
         )
-        self.copy_btn.SetToolTip("Copy changelog text to clipboard.")
+        self.copy_btn.SetToolTip(tr("CHANGELOG_TIP_COPY"))
         self.copy_btn.Bind(wx.EVT_BUTTON, self.on_copy)
         btn_sizer.Add(self.copy_btn, 0, wx.RIGHT, 10)
 
@@ -1460,6 +1572,7 @@ class ChangelogDialog(wx.Dialog):
             label=f"&{tr('CLOSE_BTN')}",
             name="Close What's New Dialog Button"
         )
+        self.close_btn.SetToolTip(tr("CHANGELOG_TIP_CLOSE"))
         self.close_btn.SetDefault()
         btn_sizer.Add(self.close_btn, 0)
 
@@ -1502,7 +1615,7 @@ class ChangelogDialog(wx.Dialog):
                 try:
                     if self and hasattr(self, "refresh_btn") and self.refresh_btn:
                         self.refresh_btn.Enable(True)
-                        self.refresh_btn.SetLabel("&Refresh Notes")
+                        self.refresh_btn.SetLabel(tr("CHANGELOG_REFRESH_BTN"))
                         if fresh and hasattr(self, "text_ctrl") and self.text_ctrl:
                             self.text_ctrl.SetValue(fresh)
                             wx.Bell()
@@ -1541,7 +1654,7 @@ class AboutDialog(wx.Dialog):
     def __init__(self, parent: Optional[wx.Window] = None):
         super().__init__(
             parent,
-            title=f"About GhostWave Studio v{APP_VERSION}",
+            title=f"{tr('ABOUT_TITLE')} v{APP_VERSION}",
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(620, 540)
         )
@@ -1554,30 +1667,51 @@ class AboutDialog(wx.Dialog):
 
         header_label = wx.StaticText(
             panel,
-            label=f"GhostWave Studio v{APP_VERSION} Software Information:"
+            label=f"{tr('ABOUT_HEADER')} v{APP_VERSION}:"
         )
         header_label.SetName("About Header Label")
         main_sizer.Add(header_label, 0, wx.ALL, 10)
 
-        about_text = (
-            f"GhostWave Studio v{APP_VERSION}\n\n"
-            "An accessible desktop application for audio and lyrics sanitization.\n"
-            "Prepares audio tracks and lyrics for platforms like Suno\n"
-            "by applying audio processing filters and text formatting.\n\n"
-            "Original Website:\n"
-            "  http://technokerslab.blogspot.com/\n\n"
-            "Features:\n"
-            "  - Audio Sanitizer: Pitch shift, tempo adjustments, frequency shift, room acoustics, and vocal reduction.\n"
-            "  - Lyrics Sanitizer: Profanity filter, celebrity name filter, Unicode cleanup, and phonetic variations.\n"
-            "  - Audio Slicer: Split audio tracks into WAV chunks suitable for library uploads.\n"
-            "  - In-App Support: Submit tickets and track developer replies directly within the app.\n"
-            "  - Secure Profiles: Stored locally in encrypted .sn format.\n"
-            "  - Accessibility: Full screen reader compatibility and keyboard shortcuts.\n\n"
-            "Support and Inquiries:\n"
-            "  Contact: hafiyanajah@gmail.com or submit an in-app support ticket (Ctrl+T).\n\n"
-            "Open Source Notice:\n"
-            "  GhostWave Studio is open source software. For source code and contributions, please see README.txt."
-        )
+        if get_language() == "id":
+            about_text = (
+                f"GhostWave Studio v{APP_VERSION}\n\n"
+                "Aplikasi desktop yang mudah diakses untuk sanitasi audio dan lirik.\n"
+                "Mempersiapkan trek audio dan lirik untuk platform seperti Suno\n"
+                "dengan menerapkan filter pemrosesan audio dan pemformatan teks.\n\n"
+                "Situs Web Asli:\n"
+                "  http://technokerslab.blogspot.com/\n\n"
+                "Fitur:\n"
+                "  - Audio Sanitizer: Pergeseran nada, penyesuaian tempo, pergeseran frekuensi, akustik ruangan, dan peredaman vokal.\n"
+                "  - Lyrics Sanitizer: Filter kata kasar, filter nama selebriti, pembersihan Unicode, dan variasi fonetik.\n"
+                "  - Audio Slicer: Memotong trek audio menjadi potongan WAV yang siap diunggah ke pustaka.\n"
+                "  - Tiket Dukungan: Kirim tiket dan pantau balasan pengembang langsung dari aplikasi.\n"
+                "  - Profil Pengaturan: Disimpan secara aman di komputer lokal dalam format .sn.\n"
+                "  - Aksesibilitas: Kompatibilitas penuh dengan pembaca layar dan pintasan keyboard.\n\n"
+                "Dukungan dan Pertanyaan:\n"
+                "  Kontak: hafiyanajah@gmail.com atau kirim tiket dukungan dalam aplikasi (Ctrl+T).\n\n"
+                "Pemberitahuan Sumber Terbuka:\n"
+                "  GhostWave Studio adalah perangkat lunak sumber terbuka. Untuk kode sumber dan panduan kontribusi, silakan lihat README_ID.txt."
+            )
+        else:
+            about_text = (
+                f"GhostWave Studio v{APP_VERSION}\n\n"
+                "An accessible desktop application for audio and lyrics sanitization.\n"
+                "Prepares audio tracks and lyrics for platforms like Suno\n"
+                "by applying audio processing filters and text formatting.\n\n"
+                "Original Website:\n"
+                "  http://technokerslab.blogspot.com/\n\n"
+                "Features:\n"
+                "  - Audio Sanitizer: Pitch shift, tempo adjustments, frequency shift, room acoustics, and vocal reduction.\n"
+                "  - Lyrics Sanitizer: Profanity filter, celebrity name filter, Unicode cleanup, and phonetic variations.\n"
+                "  - Audio Slicer: Split audio tracks into WAV chunks suitable for library uploads.\n"
+                "  - In-App Support: Submit tickets and track developer replies directly within the app.\n"
+                "  - Settings Profiles: Stored locally in .sn format.\n"
+                "  - Accessibility: Full screen reader compatibility and keyboard shortcuts.\n\n"
+                "Support and Inquiries:\n"
+                "  Contact: hafiyanajah@gmail.com or submit an in-app support ticket (Ctrl+T).\n\n"
+                "Open Source Notice:\n"
+                "  GhostWave Studio is open source software. For source code and contributions, please see README.txt."
+            )
 
         self.text_ctrl = wx.TextCtrl(
             panel,
@@ -1585,7 +1719,7 @@ class AboutDialog(wx.Dialog):
             style=wx.TE_MULTILINE | wx.TE_READONLY,
             name="About Software Read-Only Text Area"
         )
-        self.text_ctrl.SetToolTip("Software specifications and features overview.")
+        self.text_ctrl.SetToolTip(tr("ABOUT_TIP_TEXT"))
         main_sizer.Add(self.text_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -1594,10 +1728,10 @@ class AboutDialog(wx.Dialog):
         self.close_btn = wx.Button(
             panel,
             wx.ID_CANCEL,
-            label="&Close About",
+            label=tr("ABOUT_BTN_CLOSE"),
             name="Close About Dialog Button"
         )
-        self.close_btn.SetToolTip("Close this dialog (Hotkey: Escape).")
+        self.close_btn.SetToolTip(tr("ABOUT_TIP_CLOSE"))
         self.close_btn.SetDefault()
         btn_sizer.Add(self.close_btn, 0)
 
@@ -1658,12 +1792,12 @@ class AudioSanitizerPanel(wx.Panel):
             style=wx.TE_READONLY,
             name="Selected Audio File Path"
         )
-        self.file_path_ctrl.SetToolTip("Full file path of the chosen audio file.")
+        self.file_path_ctrl.SetToolTip(tr("TIP_AUDIO_FILE_PATH"))
         self.file_path_ctrl.SetValue(tr("AUDIO_NO_FILE_SELECTED"))
         picker_sizer.Add(self.file_path_ctrl, 1, wx.EXPAND | wx.RIGHT, 10)
 
         self.browse_btn = wx.Button(self, label=f"&{tr('AUDIO_SELECT_BTN')}", name="Browse Audio File Button")
-        self.browse_btn.SetToolTip("Open file browser to pick an audio file (Hot key: Alt+B).")
+        self.browse_btn.SetToolTip(tr("TIP_AUDIO_BROWSE_BTN"))
         self.browse_btn.Bind(wx.EVT_BUTTON, self.on_browse)
         picker_sizer.Add(self.browse_btn, 0, wx.ALIGN_CENTER_VERTICAL)
 
@@ -1704,12 +1838,12 @@ class AudioSanitizerPanel(wx.Panel):
             name="Sanitization Preset Selection"
         )
         self.preset_choice.SetSelection(0)
-        self.preset_choice.SetToolTip("Select an audio sanitization profile.")
+        self.preset_choice.SetToolTip(tr("TIP_AUDIO_PRESET"))
         self.preset_choice.Bind(wx.EVT_CHOICE, self.on_preset_changed)
         preset_sizer.Add(self.preset_choice, 1, wx.EXPAND | wx.RIGHT, 10)
 
         self.cloud_btn = wx.Button(self, label=tr("AUDIO_BTN_CLOUD_SETTINGS"), name="Cloud API Settings Button")
-        self.cloud_btn.SetToolTip("Configure remote stem separation credentials (Hotkey: Alt+A).")
+        self.cloud_btn.SetToolTip(tr("TIP_AUDIO_CLOUD_BTN"))
         self.cloud_btn.Bind(wx.EVT_BUTTON, self.on_cloud_settings)
         preset_sizer.Add(self.cloud_btn, 0, wx.ALIGN_CENTER_VERTICAL)
 
@@ -1735,10 +1869,10 @@ class AudioSanitizerPanel(wx.Panel):
 
         self.toggle_adv_btn = wx.Button(
             self,
-            label="&Show Advanced Settings",
+            label=tr("AUDIO_SHOW_ADVANCED_BTN"),
             name="Show Advanced Settings Button"
         )
-        self.toggle_adv_btn.SetToolTip("Show or hide advanced DSP tuning sliders, evasion checkboxes, and trimmer (Hotkey: Alt+S in this tab).")
+        self.toggle_adv_btn.SetToolTip(tr("TIP_AUDIO_ADV_SHOW"))
         self.toggle_adv_btn.Bind(wx.EVT_BUTTON, self.on_toggle_advanced)
         format_sizer.Add(self.toggle_adv_btn, 0, wx.ALIGN_CENTER_VERTICAL)
 
@@ -1766,7 +1900,7 @@ class AudioSanitizerPanel(wx.Panel):
             name="Micro Pitch Shift (Semitones/Cents)"
         )
         self.pitch_spin.SetDigits(1)
-        self.pitch_spin.SetToolTip("Shift pitch by macro interval (e.g. +2.5 st) to disrupt neural melody and chord embeddings.")
+        self.pitch_spin.SetToolTip(tr("TIP_AUDIO_PITCH"))
         grid_sizer.Add(self.pitch_spin, 0, wx.EXPAND)
 
         # Tempo Adjustment
@@ -1783,7 +1917,7 @@ class AudioSanitizerPanel(wx.Panel):
             name="Tempo Shift Factor"
         )
         self.tempo_spin.SetDigits(3)
-        self.tempo_spin.SetToolTip("Modify playback tempo (e.g. 0.940 = -6%) to disrupt fingerprint time scales.")
+        self.tempo_spin.SetToolTip(tr("TIP_AUDIO_TEMPO"))
         grid_sizer.Add(self.tempo_spin, 0, wx.EXPAND)
 
         adv_sizer.Add(grid_sizer, 0, wx.EXPAND | wx.ALL, 4)
@@ -1799,7 +1933,7 @@ class AudioSanitizerPanel(wx.Panel):
             name="Dynamic Micro-Chrono Jitter Checkbox"
         )
         self.jitter_chk.SetValue(True)
-        self.jitter_chk.SetToolTip("Applies stochastic time-warping (+/-16 ms) to flatten offset alignment histograms.")
+        self.jitter_chk.SetToolTip(tr("TIP_AUDIO_JITTER"))
         chk_sizer.Add(self.jitter_chk, 0, wx.ALL, 2)
 
         self.bode_chk = wx.CheckBox(
@@ -1808,7 +1942,7 @@ class AudioSanitizerPanel(wx.Panel):
             name="Hilbert Bode Frequency Shifter Checkbox"
         )
         self.bode_chk.SetValue(True)
-        self.bode_chk.SetToolTip("Decouples harmonic overtones and breaks CQT chroma pitch classes.")
+        self.bode_chk.SetToolTip(tr("TIP_AUDIO_BODE"))
         chk_sizer.Add(self.bode_chk, 0, wx.ALL, 2)
 
         self.decoy_chk = wx.CheckBox(
@@ -1817,7 +1951,7 @@ class AudioSanitizerPanel(wx.Panel):
             name="Adversarial Pseudo-Peak Injection Checkbox"
         )
         self.decoy_chk.SetValue(True)
-        self.decoy_chk.SetToolTip("Injects psychoacoustically placed decoy peaks into STFT bins to hijack landmark extractors.")
+        self.decoy_chk.SetToolTip(tr("TIP_AUDIO_DECOY"))
         chk_sizer.Add(self.decoy_chk, 0, wx.ALL, 2)
 
         self.allpass_chk = wx.CheckBox(
@@ -1826,7 +1960,7 @@ class AudioSanitizerPanel(wx.Panel):
             name="Schroeder All-Pass Phase Dispersion Checkbox"
         )
         self.allpass_chk.SetValue(True)
-        self.allpass_chk.SetToolTip("Scrambles phase and disperses transients without altering frequency magnitude.")
+        self.allpass_chk.SetToolTip(tr("TIP_AUDIO_ALLPASS"))
         chk_sizer.Add(self.allpass_chk, 0, wx.ALL, 2)
 
         self.reamping_chk = wx.CheckBox(
@@ -1835,7 +1969,7 @@ class AudioSanitizerPanel(wx.Panel):
             name="Virtual Acoustic Re-Amping Checkbox"
         )
         self.reamping_chk.SetValue(True)
-        self.reamping_chk.SetToolTip("Convolves with room reflections to simulate re-recording through a monitor speaker.")
+        self.reamping_chk.SetToolTip(tr("TIP_AUDIO_REAMPING"))
         chk_sizer.Add(self.reamping_chk, 0, wx.ALL, 2)
 
         self.vocal_chk = wx.CheckBox(
@@ -1844,7 +1978,7 @@ class AudioSanitizerPanel(wx.Panel):
             name="Center Vocal Suppression Checkbox"
         )
         self.vocal_chk.SetValue(True)
-        self.vocal_chk.SetToolTip("Mid/side vocal cancellation, swept formant ring modulation, and phoneme blurring.")
+        self.vocal_chk.SetToolTip(tr("TIP_AUDIO_VOCAL"))
         chk_sizer.Add(self.vocal_chk, 0, wx.ALL, 2)
 
         self.preamble_chk = wx.CheckBox(
@@ -1853,7 +1987,7 @@ class AudioSanitizerPanel(wx.Panel):
             name="Front-End Preamble Camouflage Checkbox"
         )
         self.preamble_chk.SetValue(True)
-        self.preamble_chk.SetToolTip("Prepend warm analog intro pad crossfaded into the track to displace frame 0.")
+        self.preamble_chk.SetToolTip(tr("TIP_AUDIO_PREAMBLE"))
         chk_sizer.Add(self.preamble_chk, 0, wx.ALL, 2)
 
         self.filter_chk = wx.CheckBox(
@@ -1862,6 +1996,7 @@ class AudioSanitizerPanel(wx.Panel):
             name="Apply 25 Hz High-Pass and 18 kHz Low-Pass filter to strip fingerprint metadata"
         )
         self.filter_chk.SetValue(True)
+        self.filter_chk.SetToolTip(tr("TIP_AUDIO_FILTERS"))
         chk_sizer.Add(self.filter_chk, 0, wx.ALL, 2)
 
         self.dither_chk = wx.CheckBox(
@@ -1870,6 +2005,7 @@ class AudioSanitizerPanel(wx.Panel):
             name="Add ultra-low floor dither (-65 dB) to break spectral hash"
         )
         self.dither_chk.SetValue(True)
+        self.dither_chk.SetToolTip(tr("TIP_AUDIO_DITHER"))
         chk_sizer.Add(self.dither_chk, 0, wx.ALL, 2)
 
         self.metadata_chk = wx.CheckBox(
@@ -1878,6 +2014,7 @@ class AudioSanitizerPanel(wx.Panel):
             name="Automatically strip all ID3 tags, artist tags, and album art from output"
         )
         self.metadata_chk.SetValue(True)
+        self.metadata_chk.SetToolTip(tr("TIP_AUDIO_METADATA"))
         chk_sizer.Add(self.metadata_chk, 0, wx.ALL, 2)
 
         adv_sizer.Add(chk_sizer, 0, wx.EXPAND | wx.ALL, 4)
@@ -1890,6 +2027,7 @@ class AudioSanitizerPanel(wx.Panel):
             name="Trim audio to maximum duration for Suno free tier safety"
         )
         self.trim_chk.SetValue(False)
+        self.trim_chk.SetToolTip(tr("TIP_AUDIO_TRIM_CHK"))
         self.trim_chk.Bind(wx.EVT_CHECKBOX, self.on_toggle_trim)
         trim_sizer.Add(self.trim_chk, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
@@ -1902,6 +2040,7 @@ class AudioSanitizerPanel(wx.Panel):
             name="Maximum Audio Duration in Seconds"
         )
         self.trim_spin.SetDigits(1)
+        self.trim_spin.SetToolTip(tr("TIP_AUDIO_TRIM_SPIN"))
         self.trim_spin.Enable(False)
         trim_sizer.Add(self.trim_spin, 0, wx.ALIGN_CENTER_VERTICAL)
 
@@ -1927,7 +2066,7 @@ class AudioSanitizerPanel(wx.Panel):
             label=tr("AUDIO_PROCESS_BTN"),
             name="Process and Export Audio Button"
         )
-        self.process_btn.SetToolTip("Process the audio file with selected parameters and save output (Hotkey: Alt+P).")
+        self.process_btn.SetToolTip(tr("TIP_AUDIO_PROCESS_BTN"))
         self.process_btn.Bind(wx.EVT_BUTTON, self.on_process)
         action_sizer.Add(self.process_btn, 0, wx.RIGHT, 8)
 
@@ -1936,7 +2075,7 @@ class AudioSanitizerPanel(wx.Panel):
             label=tr("AUDIO_CANCEL_BTN"),
             name="Cancel Audio Processing Button"
         )
-        self.cancel_btn.SetToolTip("Cancel ongoing audio sanitization immediately.")
+        self.cancel_btn.SetToolTip(tr("TIP_AUDIO_CANCEL_BTN"))
         self.cancel_btn.Bind(wx.EVT_BUTTON, self.on_cancel_processing)
         self.cancel_btn.Enable(False)
         action_sizer.Add(self.cancel_btn, 0, wx.RIGHT, 8)
@@ -1946,7 +2085,7 @@ class AudioSanitizerPanel(wx.Panel):
             label=tr("AUDIO_BTN_RUN_AUDIT"),
             name="Verify Evasion Safety Button"
         )
-        self.audit_btn.SetToolTip("Run quantitative Chromaprint fingerprint audit (Hotkey: Alt+E).")
+        self.audit_btn.SetToolTip(tr("TIP_AUDIO_AUDIT_BTN"))
         self.audit_btn.Bind(wx.EVT_BUTTON, self.on_audit)
         self.audit_btn.Enable(False)
         action_sizer.Add(self.audit_btn, 0, wx.RIGHT, 8)
@@ -1956,7 +2095,7 @@ class AudioSanitizerPanel(wx.Panel):
             label="ABS Audio &Slicer...",
             name="ABS Audio Slicer Button"
         )
-        self.slicer_btn.SetToolTip("Slice audio into safe 20-24s WAV chunks for Suno Library (Hotkey: Alt+S in this tab).")
+        self.slicer_btn.SetToolTip(tr("TIP_AUDIO_SLICER_BTN"))
         self.slicer_btn.Bind(wx.EVT_BUTTON, self.on_slicer)
         action_sizer.Add(self.slicer_btn, 0, wx.RIGHT, 8)
 
@@ -1965,7 +2104,7 @@ class AudioSanitizerPanel(wx.Panel):
             label="Suno &Protocol...",
             name="Suno Upload Protocol Button"
         )
-        self.protocol_btn.SetToolTip("View battle-tested Suno upload guidelines and anti-block rules.")
+        self.protocol_btn.SetToolTip(tr("TIP_AUDIO_PROTOCOL_BTN"))
         self.protocol_btn.Bind(wx.EVT_BUTTON, self.on_protocol)
         action_sizer.Add(self.protocol_btn, 0, wx.RIGHT, 10)
 
@@ -1991,7 +2130,7 @@ class AudioSanitizerPanel(wx.Panel):
             style=wx.TE_MULTILINE | wx.TE_READONLY,
             name="Audio Processing Log"
         )
-        self.log_ctrl.SetToolTip("Log detailing all DSP modifications, acoustic evasion steps, and export metrics.")
+        self.log_ctrl.SetToolTip(tr("TIP_AUDIO_LOG"))
         main_sizer.Add(self.log_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
         self.SetSizer(main_sizer)
@@ -2000,11 +2139,11 @@ class AudioSanitizerPanel(wx.Panel):
         show_adv = not self.adv_panel.IsShown()
         self.adv_panel.Show(show_adv)
         if show_adv:
-            self.toggle_adv_btn.SetLabel("&Hide Advanced Settings")
-            self.toggle_adv_btn.SetToolTip("Collapse advanced DSP tuning controls.")
+            self.toggle_adv_btn.SetLabel(tr("AUDIO_HIDE_ADVANCED_BTN"))
+            self.toggle_adv_btn.SetToolTip(tr("TIP_AUDIO_ADV_HIDE"))
         else:
-            self.toggle_adv_btn.SetLabel("&Show Advanced Settings")
-            self.toggle_adv_btn.SetToolTip("Expand advanced DSP tuning controls and evasion flags.")
+            self.toggle_adv_btn.SetLabel(tr("AUDIO_SHOW_ADVANCED_BTN"))
+            self.toggle_adv_btn.SetToolTip(tr("TIP_AUDIO_ADV_SHOW"))
         self.Layout()
         parent = self.GetTopLevelParent()
         if parent:
@@ -2381,6 +2520,61 @@ class AudioSanitizerPanel(wx.Panel):
         if hasattr(self, "audit_btn"):
             self.audit_btn.SetLabel(tr("AUDIO_BTN_RUN_AUDIT"))
 
+        # Tooltips Retranslation
+        if hasattr(self, "file_path_ctrl"):
+            self.file_path_ctrl.SetToolTip(tr("TIP_AUDIO_FILE_PATH"))
+        if hasattr(self, "browse_btn"):
+            self.browse_btn.SetToolTip(tr("TIP_AUDIO_BROWSE_BTN"))
+        if hasattr(self, "preset_choice"):
+            self.preset_choice.SetToolTip(tr("TIP_AUDIO_PRESET"))
+        if hasattr(self, "cloud_btn"):
+            self.cloud_btn.SetToolTip(tr("TIP_AUDIO_CLOUD_BTN"))
+        if hasattr(self, "toggle_adv_btn"):
+            if hasattr(self, "adv_panel") and self.adv_panel.IsShown():
+                self.toggle_adv_btn.SetToolTip(tr("TIP_AUDIO_ADV_HIDE"))
+            else:
+                self.toggle_adv_btn.SetToolTip(tr("TIP_AUDIO_ADV_SHOW"))
+        if hasattr(self, "pitch_spin"):
+            self.pitch_spin.SetToolTip(tr("TIP_AUDIO_PITCH"))
+        if hasattr(self, "tempo_spin"):
+            self.tempo_spin.SetToolTip(tr("TIP_AUDIO_TEMPO"))
+        if hasattr(self, "jitter_chk"):
+            self.jitter_chk.SetToolTip(tr("TIP_AUDIO_JITTER"))
+        if hasattr(self, "bode_chk"):
+            self.bode_chk.SetToolTip(tr("TIP_AUDIO_BODE"))
+        if hasattr(self, "decoy_chk"):
+            self.decoy_chk.SetToolTip(tr("TIP_AUDIO_DECOY"))
+        if hasattr(self, "allpass_chk"):
+            self.allpass_chk.SetToolTip(tr("TIP_AUDIO_ALLPASS"))
+        if hasattr(self, "reamping_chk"):
+            self.reamping_chk.SetToolTip(tr("TIP_AUDIO_REAMPING"))
+        if hasattr(self, "vocal_chk"):
+            self.vocal_chk.SetToolTip(tr("TIP_AUDIO_VOCAL"))
+        if hasattr(self, "preamble_chk"):
+            self.preamble_chk.SetToolTip(tr("TIP_AUDIO_PREAMBLE"))
+        if hasattr(self, "filter_chk"):
+            self.filter_chk.SetToolTip(tr("TIP_AUDIO_FILTERS"))
+        if hasattr(self, "dither_chk"):
+            self.dither_chk.SetToolTip(tr("TIP_AUDIO_DITHER"))
+        if hasattr(self, "metadata_chk"):
+            self.metadata_chk.SetToolTip(tr("TIP_AUDIO_METADATA"))
+        if hasattr(self, "trim_chk"):
+            self.trim_chk.SetToolTip(tr("TIP_AUDIO_TRIM_CHK"))
+        if hasattr(self, "trim_spin"):
+            self.trim_spin.SetToolTip(tr("TIP_AUDIO_TRIM_SPIN"))
+        if hasattr(self, "process_btn"):
+            self.process_btn.SetToolTip(tr("TIP_AUDIO_PROCESS_BTN"))
+        if hasattr(self, "cancel_btn"):
+            self.cancel_btn.SetToolTip(tr("TIP_AUDIO_CANCEL_BTN"))
+        if hasattr(self, "audit_btn"):
+            self.audit_btn.SetToolTip(tr("TIP_AUDIO_AUDIT_BTN"))
+        if hasattr(self, "slicer_btn"):
+            self.slicer_btn.SetToolTip(tr("TIP_AUDIO_SLICER_BTN"))
+        if hasattr(self, "protocol_btn"):
+            self.protocol_btn.SetToolTip(tr("TIP_AUDIO_PROTOCOL_BTN"))
+        if hasattr(self, "log_ctrl"):
+            self.log_ctrl.SetToolTip(tr("TIP_AUDIO_LOG"))
+
 
 class LyricsSanitizerPanel(wx.Panel):
     """
@@ -2419,7 +2613,7 @@ class LyricsSanitizerPanel(wx.Panel):
             size=(-1, 130),
             name="Original Lyrics Input"
         )
-        self.input_text_ctrl.SetToolTip("Type or paste your original lyrics here.")
+        self.input_text_ctrl.SetToolTip(tr("TIP_LYRICS_INPUT"))
         self.input_text_ctrl.Bind(wx.EVT_TEXT, self.on_input_text_changed)
         main_sizer.Add(self.input_text_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
@@ -2431,57 +2625,57 @@ class LyricsSanitizerPanel(wx.Panel):
         celeb_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.celeb_chk = wx.CheckBox(
             self,
-            label="Strip known artist and celebrity names",
+            label=tr("LYRICS_CHK_CELEB"),
             name="Strip known artist and celebrity names"
         )
         self.celeb_chk.SetValue(True)
-        self.celeb_chk.SetToolTip("Replaces names of copyright artists and celebrities with generic tags.")
+        self.celeb_chk.SetToolTip(tr("TIP_LYRICS_CELEB"))
         celeb_sizer.Add(self.celeb_chk, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 15)
 
         self.edit_blacklist_btn = wx.Button(
             self,
-            label="Edit &Blacklist...",
+            label=tr("LYRICS_BTN_EDIT_BLACKLIST"),
             name="Edit Celebrity Blacklist Button"
         )
-        self.edit_blacklist_btn.SetToolTip("View and edit the blacklist of celebrity and artist names.")
+        self.edit_blacklist_btn.SetToolTip(tr("TIP_LYRICS_BLACKLIST_BTN"))
         self.edit_blacklist_btn.Bind(wx.EVT_BUTTON, self.on_edit_blacklist)
         celeb_sizer.Add(self.edit_blacklist_btn, 0, wx.ALIGN_CENTER_VERTICAL)
         rules_box_sizer.Add(celeb_sizer, 0, wx.ALL, 4)
 
         self.profanity_chk = wx.CheckBox(
             self,
-            label="Filter profanity and flagged slurs",
+            label=tr("LYRICS_CHK_PROFANITY"),
             name="Filter profanity and flagged slurs"
         )
         self.profanity_chk.SetValue(True)
-        self.profanity_chk.SetToolTip("Replaces explicit language and slurs with musical, safe homophones.")
+        self.profanity_chk.SetToolTip(tr("TIP_LYRICS_PROFANITY"))
         rules_box_sizer.Add(self.profanity_chk, 0, wx.ALL, 4)
 
         self.unicode_chk = wx.CheckBox(
             self,
-            label="Normalize non-standard characters and diacritics to clean UTF-8",
+            label=tr("LYRICS_CHK_UNICODE"),
             name="Normalize non-standard characters and diacritics to clean UTF-8"
         )
         self.unicode_chk.SetValue(True)
-        self.unicode_chk.SetToolTip("Flattens accents, replaces smart typographic quotes and dashes, and strips non-printable characters.")
+        self.unicode_chk.SetToolTip(tr("TIP_LYRICS_UNICODE"))
         rules_box_sizer.Add(self.unicode_chk, 0, wx.ALL, 4)
 
         self.tags_chk = wx.CheckBox(
             self,
-            label="Auto-format Suno structural tags ([Verse], [Chorus], [Drop])",
+            label=tr("LYRICS_CHK_TAGS"),
             name="Auto-format Suno structural tags"
         )
         self.tags_chk.SetValue(True)
-        self.tags_chk.SetToolTip("Standardizes cues like [Verse], [Chorus], [Drop], [Bridge], [Outro] and fixes nested brackets.")
+        self.tags_chk.SetToolTip(tr("TIP_LYRICS_TAGS"))
         rules_box_sizer.Add(self.tags_chk, 0, wx.ALL, 4)
 
         self.length_chk = wx.CheckBox(
             self,
-            label="Character & line length limiter",
+            label=tr("LYRICS_CHK_LIMITS"),
             name="Character and line length limiter"
         )
         self.length_chk.SetValue(True)
-        self.length_chk.SetToolTip("Audits line lengths against the recommended 80-char ceiling and 3,000 token limit.")
+        self.length_chk.SetToolTip(tr("TIP_LYRICS_LENGTH"))
         rules_box_sizer.Add(self.length_chk, 0, wx.ALL, 4)
 
         main_sizer.Add(rules_box_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
@@ -2493,11 +2687,11 @@ class LyricsSanitizerPanel(wx.Panel):
 
         self.cloak_chk = wx.CheckBox(
             self,
-            label="Enable lyrics variation & spelling filters",
+            label=tr("LYRICS_CHK_CLOAK"),
             name="Enable lyrics variation and spelling filters"
         )
         self.cloak_chk.SetValue(True)
-        self.cloak_chk.SetToolTip("Transforms lyrics using spelling variations and phonetic substitutions to ensure unique phrasing.")
+        self.cloak_chk.SetToolTip(tr("TIP_LYRICS_CLOAK"))
         cloak_box_sizer.Add(self.cloak_chk, 0, wx.ALL, 4)
 
         mode_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -2517,15 +2711,15 @@ class LyricsSanitizerPanel(wx.Panel):
             name="Lyrics Sanitization Mode Selection"
         )
         self.cloak_mode_choice.SetSelection(0)
-        self.cloak_mode_choice.SetToolTip("Select sanitization strategy. Spelling variation alters orthography while preserving exact pronunciation and rhythm.")
+        self.cloak_mode_choice.SetToolTip(tr("TIP_LYRICS_MODE"))
         mode_sizer.Add(self.cloak_mode_choice, 1, wx.EXPAND | wx.RIGHT, 10)
 
         self.cloud_llm_btn = wx.Button(
             self,
-            label="Cloud &LLM Settings...",
+            label=tr("LYRICS_BTN_CLOUD_LLM"),
             name="Lyrics Cloud LLM Settings Button"
         )
-        self.cloud_llm_btn.SetToolTip("Configure Groq, OpenRouter, or OpenAI API credentials in the .sn vault.")
+        self.cloud_llm_btn.SetToolTip(tr("TIP_LYRICS_CLOUD_BTN"))
         self.cloud_llm_btn.Bind(wx.EVT_BUTTON, self.on_cloud_llm_settings)
         mode_sizer.Add(self.cloud_llm_btn, 0)
         cloak_box_sizer.Add(mode_sizer, 0, wx.EXPAND | wx.ALL, 4)
@@ -2533,29 +2727,29 @@ class LyricsSanitizerPanel(wx.Panel):
         toggles_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.vibrato_chk = wx.CheckBox(
             self,
-            label="Add vocal vibrato glides (~) to phrase cadences",
+            label=tr("LYRICS_ADD_VIBRATO"),
             name="Add vocal vibrato glides to phrase cadences"
         )
         self.vibrato_chk.SetValue(True)
-        self.vibrato_chk.SetToolTip("Appends singing vibrato glides (~) to phrase endings to disrupt regex matchers while signaling singing inflection to Suno.")
+        self.vibrato_chk.SetToolTip(tr("TIP_LYRICS_VIBRATO"))
         toggles_sizer.Add(self.vibrato_chk, 0, wx.RIGHT, 15)
 
         self.syllable_chk = wx.CheckBox(
             self,
-            label="Preserve musical syllable meter per line",
+            label=tr("LYRICS_PRESERVE_SYLLABLES"),
             name="Preserve musical syllable meter per line"
         )
         self.syllable_chk.SetValue(True)
-        self.syllable_chk.SetToolTip("Ensures every rewritten line maintains the original syllable count so it fits the audio backing track.")
+        self.syllable_chk.SetToolTip(tr("TIP_LYRICS_SYLLABLE"))
         toggles_sizer.Add(self.syllable_chk, 0, wx.RIGHT, 15)
 
         self.ngram_chk = wx.CheckBox(
             self,
-            label="Inject rhythmic backing ad-libs (yeah, oh)",
+            label=tr("LYRICS_BREAK_NGRAMS"),
             name="Inject rhythmic backing ad-libs"
         )
         self.ngram_chk.SetValue(False)
-        self.ngram_chk.SetToolTip("Injects musical ad-libs to break sequence matchers without disrupting vocals.")
+        self.ngram_chk.SetToolTip(tr("TIP_LYRICS_NGRAM"))
         toggles_sizer.Add(self.ngram_chk, 0)
         cloak_box_sizer.Add(toggles_sizer, 0, wx.ALL, 4)
 
@@ -2566,38 +2760,38 @@ class LyricsSanitizerPanel(wx.Panel):
 
         self.sanitize_btn = wx.Button(
             self,
-            label="&Sanitize Lyrics",
+            label=tr("LYRICS_PROCESS_BTN"),
             name="Sanitize Lyrics Button"
         )
-        self.sanitize_btn.SetToolTip("Run moderation filters and lyrics sanitization (Hotkey: Alt+S).")
+        self.sanitize_btn.SetToolTip(tr("TIP_LYRICS_PROCESS_BTN"))
         self.sanitize_btn.Bind(wx.EVT_BUTTON, self.on_sanitize)
         self.sanitize_btn.SetDefault()
         action_sizer.Add(self.sanitize_btn, 0, wx.RIGHT, 10)
 
         self.copy_btn = wx.Button(
             self,
-            label="&Copy Sanitized Lyrics to Clipboard",
+            label=tr("LYRICS_COPY_BTN"),
             name="Copy Sanitized Lyrics to Clipboard Button"
         )
-        self.copy_btn.SetToolTip("Copy the sanitized output lyrics to system clipboard (Hotkey: Alt+C).")
+        self.copy_btn.SetToolTip(tr("TIP_LYRICS_COPY_BTN"))
         self.copy_btn.Bind(wx.EVT_BUTTON, self.on_copy)
         action_sizer.Add(self.copy_btn, 0, wx.RIGHT, 10)
 
         self.sample_btn = wx.Button(
             self,
-            label="Load &Sample Lyrics",
+            label=tr("LYRICS_BTN_LOAD_SAMPLE"),
             name="Load Sample Lyrics Button"
         )
-        self.sample_btn.SetToolTip("Insert sample test lyrics containing copyright lines, artist names, and tags.")
+        self.sample_btn.SetToolTip(tr("TIP_LYRICS_SAMPLE_BTN"))
         self.sample_btn.Bind(wx.EVT_BUTTON, self.on_load_sample)
         action_sizer.Add(self.sample_btn, 0, wx.RIGHT, 10)
 
         self.clear_btn = wx.Button(
             self,
-            label="C&lear",
+            label=tr("LYRICS_BTN_CLEAR"),
             name="Clear All Lyrics Button"
         )
-        self.clear_btn.SetToolTip("Clear input, output, and logs.")
+        self.clear_btn.SetToolTip(tr("TIP_LYRICS_CLEAR_BTN"))
         self.clear_btn.Bind(wx.EVT_BUTTON, self.on_clear)
         action_sizer.Add(self.clear_btn, 0)
 
@@ -2616,7 +2810,7 @@ class LyricsSanitizerPanel(wx.Panel):
             size=(-1, 130),
             name="Sanitized Lyrics Output"
         )
-        self.output_text_ctrl.SetToolTip("Final sanitized lyrics ready to paste into Suno.")
+        self.output_text_ctrl.SetToolTip(tr("TIP_LYRICS_OUTPUT"))
         out_splitter.Add(self.output_text_ctrl, 1, wx.EXPAND | wx.BOTTOM, 8)
 
         self.changes_label = wx.StaticText(self, label=tr("LYRICS_GROUP_AUDIT"))
@@ -2629,7 +2823,7 @@ class LyricsSanitizerPanel(wx.Panel):
             size=(-1, 120),
             name="Changes Made"
         )
-        self.changes_ctrl.SetToolTip("Report of moderation changes, syllable counts, and applied variations.")
+        self.changes_ctrl.SetToolTip(tr("TIP_LYRICS_CHANGES"))
         out_splitter.Add(self.changes_ctrl, 1, wx.EXPAND)
 
         main_sizer.Add(out_splitter, 2, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
@@ -2847,6 +3041,46 @@ class LyricsSanitizerPanel(wx.Panel):
         if hasattr(self, "copy_btn"):
             self.copy_btn.SetLabel(tr("LYRICS_COPY_BTN"))
 
+        # Tooltips Retranslation
+        if hasattr(self, "input_text_ctrl"):
+            self.input_text_ctrl.SetToolTip(tr("TIP_LYRICS_INPUT"))
+        if hasattr(self, "celeb_chk"):
+            self.celeb_chk.SetToolTip(tr("TIP_LYRICS_CELEB"))
+        if hasattr(self, "edit_blacklist_btn"):
+            self.edit_blacklist_btn.SetToolTip(tr("TIP_LYRICS_BLACKLIST_BTN"))
+        if hasattr(self, "profanity_chk"):
+            self.profanity_chk.SetToolTip(tr("TIP_LYRICS_PROFANITY"))
+        if hasattr(self, "unicode_chk"):
+            self.unicode_chk.SetToolTip(tr("TIP_LYRICS_UNICODE"))
+        if hasattr(self, "tags_chk"):
+            self.tags_chk.SetToolTip(tr("TIP_LYRICS_TAGS"))
+        if hasattr(self, "length_chk"):
+            self.length_chk.SetToolTip(tr("TIP_LYRICS_LENGTH"))
+        if hasattr(self, "cloak_chk"):
+            self.cloak_chk.SetToolTip(tr("TIP_LYRICS_CLOAK"))
+        if hasattr(self, "cloak_mode_choice"):
+            self.cloak_mode_choice.SetToolTip(tr("TIP_LYRICS_MODE"))
+        if hasattr(self, "cloud_llm_btn"):
+            self.cloud_llm_btn.SetToolTip(tr("TIP_LYRICS_CLOUD_BTN"))
+        if hasattr(self, "vibrato_chk"):
+            self.vibrato_chk.SetToolTip(tr("TIP_LYRICS_VIBRATO"))
+        if hasattr(self, "syllable_chk"):
+            self.syllable_chk.SetToolTip(tr("TIP_LYRICS_SYLLABLE"))
+        if hasattr(self, "ngram_chk"):
+            self.ngram_chk.SetToolTip(tr("TIP_LYRICS_NGRAM"))
+        if hasattr(self, "sanitize_btn"):
+            self.sanitize_btn.SetToolTip(tr("TIP_LYRICS_PROCESS_BTN"))
+        if hasattr(self, "copy_btn"):
+            self.copy_btn.SetToolTip(tr("TIP_LYRICS_COPY_BTN"))
+        if hasattr(self, "sample_btn"):
+            self.sample_btn.SetToolTip(tr("TIP_LYRICS_SAMPLE_BTN"))
+        if hasattr(self, "clear_btn"):
+            self.clear_btn.SetToolTip(tr("TIP_LYRICS_CLEAR_BTN"))
+        if hasattr(self, "output_text_ctrl"):
+            self.output_text_ctrl.SetToolTip(tr("TIP_LYRICS_OUTPUT"))
+        if hasattr(self, "changes_ctrl"):
+            self.changes_ctrl.SetToolTip(tr("TIP_LYRICS_CHANGES"))
+
         self.on_input_text_changed(None)
 
 
@@ -2951,12 +3185,12 @@ class GhostWaveFrame(wx.Frame):
         self.export_profile_item = self.file_menu.Append(
             wx.ID_ANY,
             tr("MENU_EXPORT_PROFILE"),
-            "Export all settings and API tokens into an encrypted .sn vault"
+            "Export all settings and preferences into a .sn profile"
         )
         self.import_profile_item = self.file_menu.Append(
             wx.ID_ANY,
             tr("MENU_IMPORT_PROFILE"),
-            "Load and decrypt configuration from a .sn vault"
+            "Import settings and preferences from a .sn profile"
         )
         self.file_menu.AppendSeparator()
         self.exit_item = self.file_menu.Append(wx.ID_EXIT, tr("MENU_EXIT"), "Exit GhostWave Studio")
@@ -3102,12 +3336,12 @@ class GhostWaveFrame(wx.Frame):
             self.lyrics_tab.retranslate_ui()
 
     def on_export_profile(self, event: wx.CommandEvent):
-        """Exports all configurations to a user-specified encrypted .sn file."""
+        """Exports all configurations to a user-specified .sn profile file."""
         with wx.FileDialog(
             self,
-            message="Export Encrypted GhostWave Profile (.sn)",
+            message=tr("PROFILE_EXPORT_TITLE"),
             defaultFile=DEFAULT_SN_FILENAME,
-            wildcard="GhostWave Encrypted Profile (*.sn)|*.sn|All Files (*.*)|*.*",
+            wildcard=tr("PROFILE_WILDCARD"),
             style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT
         ) as dlg:
             if dlg.ShowModal() == wx.ID_OK:
@@ -3121,25 +3355,22 @@ class GhostWaveFrame(wx.Frame):
                 fmt_idx = self.audio_tab.format_choice.GetSelection()
                 cfg.export_format = "wav" if fmt_idx == 0 else ("320k" if fmt_idx == 1 else "192k")
                 saved_path = cfg.save(path)
-                self.set_status_text(f"Encrypted profile saved: {os.path.basename(saved_path)}")
+                fn = os.path.basename(saved_path)
+                self.set_status_text(tr("PROFILE_EXPORT_STATUS", name=fn))
                 wx.Bell()
                 wx.MessageBox(
-                    f"Profile encrypted and saved successfully!\n\n"
-                    f"File: {saved_path}\n"
-                    f"Format: Encrypted Binary Vault (.sn)\n\n"
-                    f"Protected by AES-128-CBC encryption and HMAC-SHA256.\n"
-                    f"Only GhostWave Studio can decrypt and read this file.",
-                    "Profile Exported",
+                    tr("PROFILE_EXPORT_SUCCESS_MSG", path=saved_path),
+                    tr("PROFILE_EXPORT_SUCCESS_TITLE"),
                     wx.OK | wx.ICON_INFORMATION,
                     self
                 )
 
     def on_import_profile(self, event: wx.CommandEvent):
-        """Imports and decrypts a user-specified .sn configuration profile."""
+        """Imports a user-specified .sn configuration profile."""
         with wx.FileDialog(
             self,
-            message="Import Encrypted GhostWave Profile (.sn)",
-            wildcard="GhostWave Encrypted Profile (*.sn)|*.sn|All Files (*.*)|*.*",
+            message=tr("PROFILE_IMPORT_TITLE"),
+            wildcard=tr("PROFILE_WILDCARD"),
             style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST
         ) as dlg:
             if dlg.ShowModal() == wx.ID_OK:
@@ -3155,22 +3386,19 @@ class GhostWaveFrame(wx.Frame):
                     self.audio_tab.trim_spin.SetValue(cfg.max_duration_seconds)
                     fmt_idx = 0 if cfg.export_format == "wav" else (1 if cfg.export_format == "320k" else 2)
                     self.audio_tab.format_choice.SetSelection(fmt_idx)
-                    self.set_status_text(f"Decrypted and loaded profile: {os.path.basename(path)}")
+                    fn = os.path.basename(path)
+                    self.set_status_text(tr("PROFILE_IMPORT_STATUS", name=fn))
                     wx.Bell()
                     wx.MessageBox(
-                        f"Profile decrypted and applied successfully!\n\n"
-                        f"Source File: {path}\n"
-                        f"App Version: {cfg.app_version}\n"
-                        f"Cloud Provider: {cfg.cloud_provider}\n"
-                        f"Preset: {cfg.default_preset}",
-                        "Profile Imported",
+                        tr("PROFILE_IMPORT_SUCCESS_MSG", path=path, version=cfg.app_version, preset=cfg.default_preset),
+                        tr("PROFILE_IMPORT_SUCCESS_TITLE"),
                         wx.OK | wx.ICON_INFORMATION,
                         self
                     )
                 except Exception as ex:
                     wx.MessageBox(
-                        f"Failed to decrypt and load profile:\n\n{str(ex)}",
-                        "Profile Decryption Error",
+                        tr("PROFILE_IMPORT_ERR_MSG", error=str(ex)),
+                        tr("PROFILE_IMPORT_ERR_TITLE"),
                         wx.OK | wx.ICON_ERROR,
                         self
                     )

@@ -1,4 +1,4 @@
-GHOSTWAVE STUDIO (VERSION 1.6.0)
+GHOSTWAVE STUDIO (VERSION 1.6.1)
 USER GUIDE AND GETTING STARTED MANUAL
 
 Original Website: http://technokerslab.blogspot.com/
@@ -23,7 +23,7 @@ adjustments that scramble those landmark fingerprints. To the human ear,
 your song still sounds like your track with its groove and rhythm intact,
 but to automated scanners, the fingerprint matches disappear into static.
 
-All your private API keys and settings are stored locally inside an encrypted
+All your private API keys and settings are stored locally inside a profile
 vault file named ghostwave.sn on your computer. Nothing is ever sent to any
 unauthorized server, and you do not have to download giant machine learning
 models just to use the software.
@@ -161,8 +161,8 @@ Ctrl+T: Open Support Ticket Center.
 Ctrl+U: Open the ABS Audio Slicer from anywhere in the app.
 Ctrl+B: Open the Celebrity Blacklist editor.
 Ctrl+H or Shift+F1: Open the Suno Upload Guide cheat sheet.
-Ctrl+Shift+S: Export your encrypted profile vault (.sn).
-Ctrl+Shift+O: Import an existing encrypted profile vault (.sn).
+Ctrl+Shift+S: Export your settings profile (.sn).
+Ctrl+Shift+O: Import an existing settings profile (.sn).
 Ctrl+A: Select all text inside any multiline box.
 F2: Open What's New / Changelog viewer to read latest updates offline or online.
 Escape: Close any dialog immediately.

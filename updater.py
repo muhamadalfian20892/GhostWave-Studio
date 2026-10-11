@@ -52,11 +52,11 @@ except ImportError:
             return fallback
 
 
-APP_VERSION = "1.6.0"
+APP_VERSION = "1.6.1"
 GITHUB_REPO = "muhamadalfian20892/GhostWave-Studio"
 GITHUB_API_LATEST = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 GITHUB_RAW_CHANGELOG = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/changelog.txt"
-DEFAULT_USER_AGENT = "GhostWave-Studio-Updater/1.6.0"
+DEFAULT_USER_AGENT = "GhostWave-Studio-Updater/1.6.1"
 
 
 def normalize_version(v_str: str) -> tuple[int, ...]:
