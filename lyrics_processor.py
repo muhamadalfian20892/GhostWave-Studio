@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+APP_VERSION = "1.6.2"
+
 
 # Default celebrity and artist blacklist known to trigger Suno/Udio moderation
 DEFAULT_CELEBRITY_BLACKLIST: list[str] = [
@@ -563,17 +565,24 @@ def syllabify_lines(text: str) -> str:
         if not stripped or (stripped.startswith("[") and stripped.endswith("]")):
             processed_lines.append(line)
             continue
-        words = line.split(" ")
-        new_words = []
-        for word in words:
-            match = re.match(r"^([^\w]*)([\w'-]+)([^\w]*)$", word, re.UNICODE)
-            if match:
-                prefix, core, suffix = match.groups()
-                syll = universal_syllabify(core)
-                new_words.append(f"{prefix}{syll}{suffix}")
+        parts = re.split(r"(\[[^\]]+\])", line)
+        line_out = []
+        for part in parts:
+            if part.startswith("[") and part.endswith("]"):
+                line_out.append(part)
             else:
-                new_words.append(word)
-        processed_lines.append(" ".join(new_words))
+                words = part.split(" ")
+                new_words = []
+                for word in words:
+                    match = re.match(r"^([^\w]*)([\w'-]+)([^\w]*)$", word, re.UNICODE)
+                    if match:
+                        prefix, core, suffix = match.groups()
+                        syll = universal_syllabify(core)
+                        new_words.append(f"{prefix}{syll}{suffix}")
+                    else:
+                        new_words.append(word)
+                line_out.append(" ".join(new_words))
+        processed_lines.append("".join(line_out))
     return "\n".join(processed_lines)
 
 
@@ -755,7 +764,7 @@ class RemoteLyricsRewriter:
             headers={
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {clean_token}",
-                "User-Agent": "GhostWaveStudio/1.5.0"
+                "User-Agent": f"GhostWaveStudio/{APP_VERSION}"
             },
             method="POST"
         )
@@ -904,7 +913,7 @@ class LyricsCloaker:
             # Reconstruct line respecting punctuation spacing
             reconstructed = ""
             for tok in new_tokens:
-                if not reconstructed or tok in ".,!?;:'\"-)" or reconstructed.endswith("(") or reconstructed.endswith('"'):
+                if not reconstructed or tok in ".,!?;:'\")]}" or reconstructed.endswith(("(", "[", "{")) or reconstructed == '"' or reconstructed.endswith(' "'):
                     reconstructed += tok
                 else:
                     reconstructed += " " + tok
@@ -922,8 +931,10 @@ class LyricsCloaker:
                     adlib = ADLIBS[adlib_idx % len(ADLIBS)]
                     adlib_idx += 1
                     adlibs_injected += 1
-                    if "," in reconstructed:
-                        reconstructed = reconstructed.replace(",", f" {adlib},", 1)
+                    comma_match = re.search(r",(?!\d)", reconstructed)
+                    if comma_match:
+                        idx = comma_match.start()
+                        reconstructed = reconstructed[:idx] + f" {adlib}" + reconstructed[idx:]
                     else:
                         reconstructed += f" {adlib}"
 
@@ -962,8 +973,15 @@ class LyricsProcessor:
         self.celebrity_blacklist = self.load_blacklist()
 
     def _get_default_blacklist_path(self) -> str:
-        app_dir = Path(os.environ.get("APPDATA", ".")) / "GhostWaveStudio"
-        app_dir.mkdir(parents=True, exist_ok=True)
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            app_dir = Path(appdata) / "GhostWaveStudio"
+        else:
+            app_dir = Path.home() / ".ghostwave_studio"
+        try:
+            app_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
         return str(app_dir / "celebrity_blacklist.json")
 
     def load_blacklist(self) -> list[str]:
@@ -1048,7 +1066,7 @@ class LyricsProcessor:
 
         text = "".join(cleaned_chars)
         text = unicodedata.normalize('NFC', text)
-        text = re.sub(r'[^\x20-\x7E\r\n\t]', '', text)
+        text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', text)
 
         if text != original:
             detail = []
@@ -1124,7 +1142,7 @@ class LyricsProcessor:
                 new_lines.append(line)
                 continue
 
-            nested_match = re.fullmatch(r"^\[+\s*([a-zA-Z0-9\s:_\-]+?)\s*\]+$", stripped_line)
+            nested_match = re.fullmatch(r"^\[+\s*([a-zA-Z0-9\s:_\-\(\)]+?)\s*\]+$", stripped_line)
             if nested_match and (stripped_line.startswith("[[") or stripped_line.endswith("]]")):
                 content = nested_match.group(1).strip()
                 standardized = f"[{content}]"
@@ -1133,7 +1151,7 @@ class LyricsProcessor:
                 stripped_line = standardized
 
             parenthesis_cue = re.fullmatch(
-                rf"^[\(\{{]\s*(?:{tags_union})(?:\s+[0-9]+)?(?:\s*:\s*[^\)\}}]+)?\s*[\)\}}]$",
+                rf"^[\(\{{]\s*(?:{tags_union})(?:\s*[0-9]+)?(?:\s*:\s*[^\)\}}]+)?\s*[\)\}}]$",
                 stripped_line,
                 re.IGNORECASE
             )
@@ -1145,7 +1163,7 @@ class LyricsProcessor:
                 stripped_line = standardized
 
             colon_cue = re.fullmatch(
-                rf"^(?:{tags_union})(?:\s+[0-9]+)?\s*:?$",
+                rf"^(?:{tags_union})(?:\s*[0-9]+)?\s*:?$",
                 stripped_line,
                 re.IGNORECASE
             )
@@ -1156,17 +1174,24 @@ class LyricsProcessor:
                 line_result = standardized
                 stripped_line = standardized
 
-            bracket_match = re.fullmatch(r"^\[\s*([a-zA-Z0-9\s:_\-]+?)\s*\]$", stripped_line)
+            bracket_match = re.fullmatch(r"^\[\s*([a-zA-Z0-9\s:_\-\(\)]+?)\s*\]$", stripped_line)
             if bracket_match:
                 tag_content = bracket_match.group(1).strip()
                 formatted_tag = None
                 for rec_tag in RECOGNIZED_SUNO_TAGS:
-                    pattern = rf"^({re.escape(rec_tag)})(\s+[0-9]+|\s*:\s*.+)?$"
+                    pattern = rf"^({re.escape(rec_tag)})(\s*[0-9]+|\s*:\s*.+|\s*\([^\)]+\))?$"
                     m = re.match(pattern, tag_content, flags=re.IGNORECASE)
                     if m:
                         suffix = m.group(2)
                         if suffix and suffix.strip():
-                            formatted_tag = f"[{rec_tag} {suffix.strip()}]"
+                            s_clean = suffix.strip()
+                            if s_clean.startswith(":"):
+                                colon_body = s_clean.lstrip(":").strip()
+                                formatted_tag = f"[{rec_tag}: {colon_body}]" if colon_body else f"[{rec_tag}]"
+                            elif s_clean.startswith("("):
+                                formatted_tag = f"[{rec_tag} {s_clean}]"
+                            else:
+                                formatted_tag = f"[{rec_tag} {s_clean}]"
                         else:
                             formatted_tag = f"[{rec_tag}]"
                         break

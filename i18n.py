@@ -105,6 +105,9 @@ def tr(key: str, **kwargs: Any) -> str:
             _LOADED_CATALOGS["en"] = _load_catalog("en")
         text = _LOADED_CATALOGS.get("en", {}).get(key, key)
 
+    if text:
+        text = text.replace(r"\n", "\n")
+
     if kwargs and text:
         try:
             return text.format(**kwargs)

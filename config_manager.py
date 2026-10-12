@@ -55,7 +55,7 @@ class GhostWaveConfig:
     """
     # Metadata
     app_name: str = "GhostWave Studio"
-    app_version: str = "1.6.1"
+    app_version: str = "1.6.2"
     check_updates_on_startup: bool = True
     language: str = "en"
     first_run: bool = True
@@ -166,7 +166,9 @@ class GhostWaveConfig:
         Returns the absolute path to the written file.
         """
         target_path = resolve_config_path(file_path, for_writing=True)
-        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+        parent_dir = os.path.dirname(target_path)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
         raw_bytes = self.to_encrypted_bytes()
 
         # If previous target exists, preserve a backup
@@ -177,13 +179,20 @@ class GhostWaveConfig:
                 pass
 
         temp_target = f"{target_path}.tmp"
-        with open(temp_target, "wb") as f:
-            f.write(raw_bytes)
-            f.flush()
-            os.fsync(f.fileno())
+        try:
+            with open(temp_target, "wb") as f:
+                f.write(raw_bytes)
+                f.flush()
+                os.fsync(f.fileno())
 
-        shutil.move(temp_target, target_path)
-        return target_path
+            shutil.move(temp_target, target_path)
+            return target_path
+        finally:
+            if os.path.exists(temp_target):
+                try:
+                    os.remove(temp_target)
+                except OSError:
+                    pass
 
     @classmethod
     def load(cls, file_path: Optional[str] = None) -> "GhostWaveConfig":

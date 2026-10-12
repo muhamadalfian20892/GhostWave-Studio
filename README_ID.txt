@@ -1,4 +1,4 @@
-GHOSTWAVE STUDIO (VERSI 1.6.1)
+GHOSTWAVE STUDIO (VERSI 1.6.2)
 PANDUAN PENGGUNA DAN PETUNJUK MEMULAI
 
 Situs Web Asli: http://technokerslab.blogspot.com/

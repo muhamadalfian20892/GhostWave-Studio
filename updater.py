@@ -52,11 +52,11 @@ except ImportError:
             return fallback
 
 
-APP_VERSION = "1.6.1"
+APP_VERSION = "1.6.2"
 GITHUB_REPO = "muhamadalfian20892/GhostWave-Studio"
 GITHUB_API_LATEST = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 GITHUB_RAW_CHANGELOG = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/changelog.txt"
-DEFAULT_USER_AGENT = "GhostWave-Studio-Updater/1.6.1"
+DEFAULT_USER_AGENT = "GhostWave-Studio-Updater/1.6.2"
 
 
 def normalize_version(v_str: str) -> tuple[int, ...]:
@@ -599,12 +599,19 @@ class UpdateDownloadDialog(wx.Dialog):
                         mb_total = total_size / (1024 * 1024)
 
                         def _update_ui(p=pct, d=mb_done, t=mb_total, tot=total_size):
-                            if self and self.gauge:
-                                self.gauge.SetValue(min(100, p))
-                                if tot > 0:
-                                    self.progress_label.SetLabel(f"Downloaded {d:.1f} MB of {t:.1f} MB ({p}%)")
-                                else:
-                                    self.progress_label.SetLabel(f"Downloaded {d:.1f} MB")
+                            try:
+                                if self and hasattr(self, "gauge") and self.gauge:
+                                    self.gauge.SetValue(min(100, p))
+                                    if tot > 0:
+                                        self.progress_label.SetLabel(
+                                            tr("UPDATER_PROGRESS_FORMAT", done=f"{d:.1f}", total=f"{t:.1f}", pct=p)
+                                        )
+                                    else:
+                                        self.progress_label.SetLabel(
+                                            tr("UPDATER_PROGRESS_FORMAT_SIMPLE", done=f"{d:.1f}")
+                                        )
+                            except Exception:
+                                pass
 
                         wx.CallAfter(_update_ui)
 
@@ -627,9 +634,15 @@ class UpdateDownloadDialog(wx.Dialog):
             wx.CallAfter(self._on_download_failed)
 
     def _on_download_complete(self):
-        self.status_label.SetLabel("Download completed successfully!")
-        self.progress_label.SetLabel("File saved to disk.")
-        self.gauge.SetValue(100)
+        try:
+            if hasattr(self, "status_label") and self.status_label:
+                self.status_label.SetLabel(tr("UPDATER_DOWNLOAD_COMPLETE_STATUS"))
+            if hasattr(self, "progress_label") and self.progress_label:
+                self.progress_label.SetLabel(tr("UPDATER_DOWNLOAD_COMPLETE_DETAILS"))
+            if hasattr(self, "gauge") and self.gauge:
+                self.gauge.SetValue(100)
+        except Exception:
+            pass
         self.EndModal(wx.ID_OK)
 
     def _on_download_failed(self):
@@ -656,7 +669,7 @@ def run_update_flow(parent: Optional[wx.Window], info: UpdateInfo):
     Executes the interactive update user experience:
     1. Shows UpdateDialog.
     2. If user clicks Download Now, either initiates direct download or opens release page.
-    3. Offers to launch the downloaded installer package upon completion.
+    3. Offers to launch installer or open downloads directory for portable package.
     """
     dlg = UpdateDialog(parent, info)
     res = dlg.ShowModal()
@@ -670,33 +683,55 @@ def run_update_flow(parent: Optional[wx.Window], info: UpdateInfo):
             dl_dlg.Destroy()
 
             if dl_res == wx.ID_OK and saved_path and os.path.exists(saved_path):
-                # Prompt to launch installer
-                msg = tr("UPDATER_SUCCESS_MSG")
-                launch_dlg = wx.MessageDialog(
-                    parent,
-                    msg,
-                    tr("UPDATER_SUCCESS_TITLE"),
-                    wx.YES_NO | wx.ICON_QUESTION
-                )
-                if launch_dlg.ShowModal() == wx.ID_YES:
-                    launch_dlg.Destroy()
-                    try:
-                        if sys.platform == "win32":
-                            os.startfile(saved_path)
-                        else:
-                            import subprocess
-                            subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", saved_path])
-                        if parent:
-                            parent.Close(force=True)
-                    except Exception as ex:
-                        wx.MessageBox(
-                            f"Could not automatically launch installer:\n\n{str(ex)}",
-                            "Launch Error",
-                            wx.OK | wx.ICON_ERROR,
-                            parent
-                        )
+                if saved_path.lower().endswith(".zip"):
+                    zip_msg = tr("UPDATER_PORTABLE_SAVED_MSG", path=saved_path)
+                    zip_dlg = wx.MessageDialog(
+                        parent,
+                        zip_msg,
+                        tr("UPDATER_PORTABLE_SAVED_TITLE"),
+                        wx.YES_NO | wx.ICON_INFORMATION
+                    )
+                    if zip_dlg.ShowModal() == wx.ID_YES:
+                        zip_dlg.Destroy()
+                        try:
+                            folder = os.path.dirname(saved_path)
+                            if sys.platform == "win32":
+                                os.startfile(folder)
+                            else:
+                                import subprocess
+                                subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", folder])
+                        except Exception:
+                            pass
+                    else:
+                        zip_dlg.Destroy()
                 else:
-                    launch_dlg.Destroy()
+                    # Prompt to launch installer
+                    msg = tr("UPDATER_SUCCESS_MSG")
+                    launch_dlg = wx.MessageDialog(
+                        parent,
+                        msg,
+                        tr("UPDATER_SUCCESS_TITLE"),
+                        wx.YES_NO | wx.ICON_QUESTION
+                    )
+                    if launch_dlg.ShowModal() == wx.ID_YES:
+                        launch_dlg.Destroy()
+                        try:
+                            if sys.platform == "win32":
+                                os.startfile(saved_path)
+                            else:
+                                import subprocess
+                                subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", saved_path])
+                            if parent:
+                                parent.Close(force=True)
+                        except Exception as ex:
+                            wx.MessageBox(
+                                f"Could not automatically launch installer:\n\n{str(ex)}",
+                                "Launch Error",
+                                wx.OK | wx.ICON_ERROR,
+                                parent
+                            )
+                    else:
+                        launch_dlg.Destroy()
         else:
             # Fallback to browser release page
             target_url = info.html_url or f"https://github.com/{GITHUB_REPO}/releases"

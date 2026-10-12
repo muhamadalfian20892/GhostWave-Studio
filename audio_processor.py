@@ -63,6 +63,7 @@ from pathlib import Path
 from typing import Callable, Optional, Sequence, Tuple
 import functools
 import threading
+import uuid
 
 import numpy as np
 import scipy.fft as fft
@@ -247,8 +248,12 @@ def load_audio_samples(file_path: str, target_sr: int = 44100) -> Tuple[np.ndarr
 
     # Remove DC offset to center waveform around zero
     if data.size > 0:
-        dc_offset = np.mean(data, axis=0, keepdims=True)
-        data = data - dc_offset
+        if data.ndim == 1:
+            dc_offset = np.mean(data)
+            data = data - dc_offset
+        else:
+            dc_offset = np.mean(data, axis=0, keepdims=True)
+            data = data - dc_offset
 
     return data, sr
 
@@ -266,7 +271,7 @@ def export_clean_audio(
     Uses FFmpeg with multi-threading and bitexact flags for maximal sanitization.
     """
     out_ext = Path(output_path).suffix.lower()
-    temp_wav = str(Path(output_path).with_suffix(".temp_clean_exp.wav"))
+    temp_wav = str(Path(output_path).with_suffix(f".temp_clean_{uuid.uuid4().hex[:8]}.wav"))
     ffmpeg_bin = shutil.which("ffmpeg")
 
     clean_data = apply_soft_limiting(data, threshold=0.98)
@@ -299,7 +304,7 @@ def export_clean_audio(
                     "-fflags", "+bitexact"
                 ])
             cmd.append(output_path)
-            res = subprocess.run(cmd, capture_output=True, text=True)
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
             if res.returncode != 0:
                 raise RuntimeError(f"FFmpeg export failed:\n{res.stderr}")
         else:
@@ -464,8 +469,8 @@ def apply_continuous_pitch_wobble(
     ffmpeg_bin = shutil.which("ffmpeg")
 
     if ffmpeg_bin:
-        temp_in = str(Path(tempfile.gettempdir()) / f"tmp_wob_in_{os.getpid()}.wav")
-        temp_out = str(Path(tempfile.gettempdir()) / f"tmp_wob_out_{os.getpid()}.wav")
+        temp_in = str(Path(tempfile.gettempdir()) / f"tmp_wob_in_{uuid.uuid4().hex[:12]}.wav")
+        temp_out = str(Path(tempfile.gettempdir()) / f"tmp_wob_out_{uuid.uuid4().hex[:12]}.wav")
         try:
             sf.write(temp_in, data, sr, subtype='PCM_16')
             filter_str = (
@@ -473,7 +478,7 @@ def apply_continuous_pitch_wobble(
                 f"vibrato=f={wobble_freq:.3f}:d={wobble_depth:.3f}"
             )
             cmd = [ffmpeg_bin, "-y", "-i", temp_in, "-af", filter_str, "-ar", str(sr), temp_out]
-            res = subprocess.run(cmd, capture_output=True, text=True)
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
             if res.returncode == 0 and os.path.exists(temp_out):
                 out_data, _ = sf.read(temp_out, dtype='float32')
                 return out_data.astype(np.float32)
@@ -645,6 +650,8 @@ def apply_adversarial_peak_injection(
     noverlap = 1536
 
     def _process_channel(ch: np.ndarray) -> np.ndarray:
+        if len(ch) < nperseg:
+            return ch.copy()
         f, t_spec, Zxx = signal.stft(ch, fs=sr, nperseg=nperseg, noverlap=noverlap)
         mag = np.abs(Zxx)
         phase = np.angle(Zxx)
@@ -741,7 +748,8 @@ def apply_virtual_acoustic_reamping(
     envelope = np.exp(-t / room_decay)
     diffuse = noise_tail * envelope
 
-    b_air, a_air = signal.butter(2, 5500.0, btype='lp', fs=sr)
+    cutoff_air = min(5500.0, sr * 0.45)
+    b_air, a_air = signal.butter(2, cutoff_air, btype='lp', fs=sr)
     diffuse = signal.lfilter(b_air, a_air, diffuse)
 
     full_rir = rir + diffuse
@@ -781,8 +789,9 @@ def apply_anti_whisper_vocal_scrambler(
     out = np.copy(data)
 
     if out.ndim >= 2 and out.shape[1] >= 2:
-        sos_bass = signal.butter(2, 180.0, btype='lp', fs=sr, output='sos')
-        sos_hp = signal.butter(2, 180.0, btype='hp', fs=sr, output='sos')
+        low_split = min(180.0, sr * 0.45)
+        sos_bass = signal.butter(2, low_split, btype='lp', fs=sr, output='sos')
+        sos_hp = signal.butter(2, low_split, btype='hp', fs=sr, output='sos')
 
         bass = signal.sosfilt(sos_bass, out, axis=0)
         high = signal.sosfilt(sos_hp, out, axis=0)
@@ -797,8 +806,14 @@ def apply_anti_whisper_vocal_scrambler(
 
         out = bass_out + np.column_stack([l_cut, r_cut])
 
-    sos_vocal = signal.butter(2, [400.0, 3800.0], btype='bandpass', fs=sr, output='sos')
-    formant_band = signal.sosfilt(sos_vocal, out, axis=0)
+    nyquist = sr * 0.49
+    low_cut = min(400.0, nyquist * 0.5)
+    high_cut = min(3800.0, nyquist)
+    if low_cut < high_cut:
+        sos_vocal = signal.butter(2, [low_cut, high_cut], btype='bandpass', fs=sr, output='sos')
+        formant_band = signal.sosfilt(sos_vocal, out, axis=0)
+    else:
+        formant_band = np.zeros_like(out)
 
     t = np.linspace(0, len(out) / sr, len(out), endpoint=False, dtype=np.float32)
     lfo_mod = np.sin(2.0 * np.pi * 0.35 * t)
@@ -838,13 +853,13 @@ def apply_pitch_and_tempo_shift(
     ffmpeg_bin = shutil.which("ffmpeg")
 
     if ffmpeg_bin:
-        temp_in = str(Path(tempfile.gettempdir()) / f"tmp_rb_in_{os.getpid()}.wav")
-        temp_out = str(Path(tempfile.gettempdir()) / f"tmp_rb_out_{os.getpid()}.wav")
+        temp_in = str(Path(tempfile.gettempdir()) / f"tmp_rb_in_{uuid.uuid4().hex[:12]}.wav")
+        temp_out = str(Path(tempfile.gettempdir()) / f"tmp_rb_out_{uuid.uuid4().hex[:12]}.wav")
         try:
             sf.write(temp_in, data, sr, subtype='PCM_16')
             filter_str = f"rubberband=pitch={pitch_ratio:.6f}:tempo={tempo_factor:.6f}:formant=shifted"
             cmd = [ffmpeg_bin, "-y", "-i", temp_in, "-af", filter_str, "-ar", str(sr), temp_out]
-            res = subprocess.run(cmd, capture_output=True, text=True)
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
             if res.returncode == 0 and os.path.exists(temp_out):
                 out_data, _ = sf.read(temp_out, dtype='float32')
                 return out_data.astype(np.float32)
@@ -922,10 +937,11 @@ def apply_eq_and_dither(
     out = np.copy(data)
 
     if apply_filters:
-        sos_hp = signal.butter(2, 25.0, btype='hp', fs=sr, output='sos')
-        out = signal.sosfilt(sos_hp, out, axis=0)
+        if 25.0 < sr * 0.45:
+            sos_hp = signal.butter(2, 25.0, btype='hp', fs=sr, output='sos')
+            out = signal.sosfilt(sos_hp, out, axis=0)
 
-        if 18500.0 < sr / 2.0:
+        if 18500.0 < sr * 0.49:
             sos_lp = signal.butter(4, 18500.0, btype='lp', fs=sr, output='sos')
             out = signal.sosfilt(sos_lp, out, axis=0)
 
@@ -970,7 +986,17 @@ def slice_audio_for_suno(
         chunk = data[start:end]
         min_allowed = min(int(3.0 * sr), chunk_samples)
         if len(chunk) < min_allowed:
-            break
+            if output_files and len(output_files) > 0:
+                last_path = output_files[-1]
+                prev_data, _ = sf.read(last_path)
+                combined = np.concatenate([prev_data, chunk], axis=0)
+                export_clean_audio(combined, sr, last_path, output_bitrate="wav", strip_metadata=True)
+                break
+            else:
+                chunk_path = os.path.join(output_dir, f"{base_name}_part01.wav")
+                export_clean_audio(chunk, sr, chunk_path, output_bitrate="wav", strip_metadata=True)
+                output_files.append(chunk_path)
+                break
 
         chunk_path = os.path.join(output_dir, f"{base_name}_part{chunk_idx:02d}.wav")
         export_clean_audio(chunk, sr, chunk_path, output_bitrate="wav", strip_metadata=True)
@@ -1128,7 +1154,8 @@ def benchmark_evasion_metrics(original_path: str, sanitized_path: str) -> dict:
         rms_o = np.sqrt(np.mean(voc_o ** 2)) + 1e-9
         rms_s = np.sqrt(np.mean(voc_s ** 2)) + 1e-9
         db_diff = 20.0 * np.log10(rms_s / rms_o)
-        metrics["vocal_energy_drop_db"] = round(float(db_diff), 1)
+        db_diff = float(np.clip(db_diff, -60.0, 20.0))
+        metrics["vocal_energy_drop_db"] = round(db_diff, 1)
     except Exception:
         pass
 
@@ -1347,9 +1374,11 @@ def sanitize_audio(
         # -------------------------------------------------------------
         check_cancelled()
         log_msg(96, f"Normalizing peak amplitude to {peak_target_db:.1f} dBFS...")
+        if not np.isfinite(processed_data).all():
+            processed_data = np.nan_to_num(processed_data, nan=0.0, posinf=1.0, neginf=-1.0)
         target_peak_linear = 10.0 ** (peak_target_db / 20.0)
         curr_peak = np.max(np.abs(processed_data))
-        if curr_peak > 0:
+        if np.isfinite(curr_peak) and curr_peak > 0:
             processed_data = processed_data * (target_peak_linear / curr_peak)
 
         # -------------------------------------------------------------

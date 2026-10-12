@@ -1,5 +1,5 @@
 """
-Support Ticket Client for GhostWave Studio v1.4.0.
+Support Ticket Client for GhostWave Studio v1.6.2.
 
 Communicates with the secure Cloudflare Worker serverless relay to create tickets,
 retrieve discussion threads, and submit user replies to the private GitHub repository.
@@ -15,7 +15,7 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
-
+SUPPORT_CLIENT_VERSION = "1.6.2"
 DEFAULT_WORKER_URL = "https://ghostwave-studio-private.hafiyanajah.workers.dev"
 REQUEST_TIMEOUT_SECONDS = 15.0
 
@@ -25,7 +25,7 @@ def generate_ticket_key() -> str:
     return secrets.token_hex(16)
 
 
-def get_system_diagnostics(app_version: str = "1.6.1") -> str:
+def get_system_diagnostics(app_version: str = SUPPORT_CLIENT_VERSION) -> str:
     """Collects system details for diagnostic ticket reports."""
     try:
         os_info = f"{platform.platform()} ({platform.architecture()[0]})"
@@ -53,7 +53,7 @@ def create_ticket(
     category: str,
     title: str,
     description: str,
-    client_version: str = "1.6.1",
+    client_version: str = SUPPORT_CLIENT_VERSION,
     attach_sys_info: bool = True,
     worker_url: str = DEFAULT_WORKER_URL
 ) -> Tuple[bool, Dict[str, Any], Optional[str]]:
@@ -127,7 +127,7 @@ def fetch_ticket(
     })
     endpoint = f"{worker_url.rstrip('/')}/api/tickets?{query}"
     headers = {
-        "User-Agent": "GhostWave-Studio/1.5.0"
+        "User-Agent": f"GhostWave-Studio/{SUPPORT_CLIENT_VERSION}"
     }
 
     try:
@@ -175,7 +175,7 @@ def reply_to_ticket(
     endpoint = f"{worker_url.rstrip('/')}/api/tickets/reply"
     headers = {
         "Content-Type": "application/json",
-        "User-Agent": "GhostWave-Studio/1.5.0"
+        "User-Agent": f"GhostWave-Studio/{SUPPORT_CLIENT_VERSION}"
     }
 
     try:

@@ -15,15 +15,21 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
 import tempfile
 import time
-import urllib.request
 import urllib.error
+import urllib.request
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional, Tuple
-import soundfile as sf
+
 import numpy as np
+import soundfile as sf
+
+APP_VERSION = "1.6.2"
 
 
 CONFIG_FILE_PATH = os.path.join(os.path.expanduser("~"), ".suno_sanitizer_cloud_config.json")
@@ -152,6 +158,26 @@ class CloudStemClient:
             audio_bytes = f.read()
 
         ext = Path(audio_file_path).suffix.lower()
+        if len(audio_bytes) > 8 * 1024 * 1024:
+            log(22, "Audio file exceeds 8 MB. Compressing stream for Cloud upload...")
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tf_cmp:
+                cmp_path = tf_cmp.name
+            try:
+                ffmpeg_bin = shutil.which("ffmpeg")
+                if ffmpeg_bin:
+                    cmd = [ffmpeg_bin, "-y", "-i", audio_file_path, "-b:a", "192k", "-ar", "44100", cmp_path]
+                    subprocess.run(cmd, capture_output=True, timeout=60)
+                    if os.path.exists(cmp_path) and os.path.getsize(cmp_path) > 0:
+                        with open(cmp_path, "rb") as f:
+                            audio_bytes = f.read()
+                        ext = ".mp3"
+            finally:
+                if os.path.exists(cmp_path):
+                    try:
+                        os.remove(cmp_path)
+                    except OSError:
+                        pass
+
         mime = "audio/wav" if ext == ".wav" else ("audio/mpeg" if ext == ".mp3" else "application/octet-stream")
         data_uri = f"data:{mime};base64,{base64.b64encode(audio_bytes).decode('ascii')}"
 
@@ -401,7 +427,16 @@ class CloudStemClient:
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tf:
                 tmp_p = tf.name
             try:
-                urllib.request.urlretrieve(url, tmp_p)
+                req = urllib.request.Request(url, headers={"User-Agent": f"GhostWaveStudio/{APP_VERSION}"})
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    status = resp.getcode()
+                    if status != 200:
+                        raise RuntimeError(f"Server returned HTTP status {status}")
+                    content = resp.read()
+                    if not content or len(content) < 44:
+                        raise RuntimeError("Downloaded stem file is empty or corrupted")
+                    with open(tmp_p, "wb") as f:
+                        f.write(content)
                 d, sr = sf.read(tmp_p, dtype='float32')
                 return d, sr
             finally:

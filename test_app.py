@@ -770,11 +770,11 @@ class TestVersion120UpgradesAndPersonas(unittest.TestCase):
         self.assertIn("OS:", diag)
         self.assertIn("App Version: 1.4.0", diag)
 
-    def test_config_manager_v1_6_1(self):
-        """Verifies v1.6.1 configuration fields, default presets, and ticket persistence."""
+    def test_config_manager_v1_6_2(self):
+        """Verifies v1.6.2 configuration fields, default presets, and ticket persistence."""
         from config_manager import GhostWaveConfig
         cfg = GhostWaveConfig()
-        self.assertEqual(cfg.app_version, "1.6.1")
+        self.assertEqual(cfg.app_version, "1.6.2")
         self.assertEqual(cfg.language, "en")
         self.assertEqual(cfg.default_preset, "Complete Sanitization (Recommended)")
         self.assertTrue(cfg.first_run)
@@ -799,7 +799,7 @@ class TestVersion120UpgradesAndPersonas(unittest.TestCase):
 
         frame = GhostWaveFrame()
         try:
-            self.assertEqual(frame.GetTitle(), "GhostWave Studio v1.6.1")
+            self.assertEqual(frame.GetTitle(), "GhostWave Studio v1.6.2")
             self.assertIsNotNone(frame.changelog_item)
         finally:
             frame.Destroy()
@@ -883,6 +883,65 @@ class TestVersion120UpgradesAndPersonas(unittest.TestCase):
         finally:
             frame.Destroy()
             set_language("en")
+
+    def test_v1_6_2_bugfixes(self):
+        """Verifies v1.6.2 DSP safeguards, international lyrics preservation, and unescaped newlines."""
+        import numpy as np
+        from i18n import init_translations, set_language, tr
+        from audio_processor import (
+            apply_virtual_acoustic_reamping,
+            apply_adversarial_peak_injection,
+            apply_eq_and_dither,
+            slice_audio_for_suno,
+            export_clean_audio
+        )
+        from lyrics_processor import LyricsProcessor, syllabify_lines, LyricsCloaker
+
+        # 1. Test unescaped newlines in translations
+        init_translations("id")
+        set_language("id")
+        cloud_info = tr("CLOUD_API_INFO")
+        self.assertNotIn(r"\n", cloud_info)
+        self.assertIn("\n", cloud_info)
+        set_language("en")
+
+        # 2. Test re-amping with 8 kHz sample rate (Nyquist guard)
+        sig_8k = np.sin(2 * np.pi * 440 * np.linspace(0, 0.5, 4000)).astype(np.float32)
+        reamped = apply_virtual_acoustic_reamping(sig_8k, sr=8000)
+        self.assertEqual(len(reamped), len(sig_8k))
+
+        # 3. Test peak injection on short audio (< nperseg)
+        short_sig = np.sin(2 * np.pi * 440 * np.linspace(0, 0.02, 882)).astype(np.float32)
+        injected = apply_adversarial_peak_injection(short_sig, sr=44100)
+        self.assertEqual(len(injected), len(short_sig))
+
+        # 4. Test EQ and dither with low sample rate (16 kHz)
+        sig_16k = np.sin(2 * np.pi * 440 * np.linspace(0, 0.2, 3200)).astype(np.float32)
+        dithered = apply_eq_and_dither(sig_16k, sr=16000)
+        self.assertEqual(len(dithered), len(sig_16k))
+
+        # 5. Test international lyrics preservation in normalize_unicode
+        processor = LyricsProcessor()
+        japanese_text = "こんにちは世界 (Hello World)"
+        norm_jp, _ = processor.normalize_unicode(japanese_text)
+        self.assertIn("こんにちは世界", norm_jp)
+
+        # 6. Test structural tags formatting with parentheses, colons, and attached numbers
+        tags_raw = "[Guitar Solo (Fast)]\n[verse1]\n[Verse: Acoustic]"
+        fmt_tags, _ = processor.format_structural_tags(tags_raw)
+        self.assertIn("[Guitar Solo (Fast)]", fmt_tags)
+        self.assertIn("[Verse 1]", fmt_tags)
+        self.assertIn("[Verse: Acoustic]", fmt_tags)
+
+        # 7. Test syllabify_lines protecting inline structural tags
+        mixed_line = "Singing a song [Chorus] in the rain"
+        syll_res = syllabify_lines(mixed_line)
+        self.assertIn("[Chorus]", syll_res)
+
+        # 8. Test quote spacing in cloaker
+        quoted_text = '"Hello" world'
+        cloaked, _ = LyricsCloaker.cloak(quoted_text, mode="scramble", add_vibrato_glides=False)
+        self.assertIn('" ', cloaked)
 
 
 if __name__ == "__main__":
