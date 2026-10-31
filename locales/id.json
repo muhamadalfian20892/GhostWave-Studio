@@ -365,5 +365,11 @@
   "AUDIT_HEADER_TRANSFORM": "=== AUDIT MODERASI & TRANSFORMASI ===",
   "AUDIT_HEADER_WARNINGS": "=== POTENSI MASALAH & PERINGATAN ===",
   "AUDIT_HEADER_METRICS": "=== METRIK LIRIK ===",
-  "AUDIT_METRICS_FORMAT": "Karakter: {chars} | Baris: {lines} | Kata: {words} | Perkiraan Durasi Bernyanyi: {duration}"
+  "AUDIT_METRICS_FORMAT": "Karakter: {chars} | Baris: {lines} | Kata: {words} | Perkiraan Durasi Bernyanyi: {duration}",
+  "AUDIO_LABEL_MODE": "Mode Alur Kerja:",
+  "AUDIO_MODE_VOCAL_COVER": "Mode Cover Vokal (Preservasi Melodi & Anti-ASR)",
+  "AUDIO_MODE_INSTRUMENTAL": "Mode Instrumental (Pembersihan Vokal Total)",
+  "AUDIO_ARTICULATION_SOFTENER": "Peredam Artikulasi Vokal Anti-ASR (Merusak Transkripsi Whisper)",
+  "TIP_AUDIO_MODE": "Pilih alur kerja: Mode Cover Vokal (mempertahankan melodi dan titinada untuk Suno sembari meredam artikulasi konsonan agar lolos filter hak cipta) atau Mode Instrumental (membersihkan vokal tengah total untuk instrumen).",
+  "TIP_AUDIO_ARTICULATION": "Meredam transien konsonan frekuensi tinggi (3.2-7.5 kHz) untuk menurunkan akurasi pengenalan teks Whisper sembari menjaga vokal, titinada, dan melodi tetap utuh untuk Suno."
 }

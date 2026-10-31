@@ -365,5 +365,11 @@
   "AUDIT_HEADER_TRANSFORM": "=== MODERATION & TRANSFORMATION AUDIT ===",
   "AUDIT_HEADER_WARNINGS": "=== POTENTIAL ISSUES & WARNINGS ===",
   "AUDIT_HEADER_METRICS": "=== LYRICS METRICS ===",
-  "AUDIT_METRICS_FORMAT": "Characters: {chars} | Lines: {lines} | Words: {words} | Estimated Singing Duration: {duration}"
+  "AUDIT_METRICS_FORMAT": "Characters: {chars} | Lines: {lines} | Words: {words} | Estimated Singing Duration: {duration}",
+  "AUDIO_LABEL_MODE": "Workflow Mode:",
+  "AUDIO_MODE_VOCAL_COVER": "Vocal Cover Mode (Melodic Evasion & Anti-ASR)",
+  "AUDIO_MODE_INSTRUMENTAL": "Instrumental Mode (Complete Vocal Elimination)",
+  "AUDIO_ARTICULATION_SOFTENER": "Anti-ASR Vocal Articulation Softener (Tames Consonants to Bypass Whisper)",
+  "TIP_AUDIO_MODE": "Select workflow: Vocal Cover Mode (preserves singing melody and pitch for Suno while softening articulation and shifting timbre to bypass copyright) or Instrumental Mode (eliminates center vocals for backing tracks).",
+  "TIP_AUDIO_ARTICULATION": "Softens high-frequency consonant transients (3.2-7.5 kHz) to degrade Whisper ASR speech recognition while keeping singing vowels, notes, and melody in-tune for Suno."
 }

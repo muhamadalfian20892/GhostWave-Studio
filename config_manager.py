@@ -69,7 +69,10 @@ class GhostWaveConfig:
     cloud_timeout_seconds: int = 180              # Remote job timeout in seconds
 
     # Audio DSP & Sanitization Preferences
+    workflow_mode: str = "vocal_cover"            # "vocal_cover" or "instrumental"
     default_preset: str = "Complete Sanitization (Recommended)"
+    enable_vocal_articulation_softener: bool = True
+    articulation_intensity: float = 0.65
     export_format: str = "wav"                    # "wav", "320k", "192k"
     pitch_shift_semitones: float = 2.5
     tempo_factor: float = 0.940

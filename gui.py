@@ -1831,6 +1831,26 @@ class AudioSanitizerPanel(wx.Panel):
         self.param_box.SetName("Sanitization Parameters Group")
         param_box_sizer = wx.StaticBoxSizer(self.param_box, wx.VERTICAL)
 
+        # Workflow Mode Selection (Vocal Cover vs Instrumental)
+        mode_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.mode_label = wx.StaticText(self, label=tr("AUDIO_LABEL_MODE"))
+        self.mode_label.SetName("Workflow Mode Label")
+        mode_sizer.Add(self.mode_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+
+        self.mode_choice = wx.Choice(
+            self,
+            choices=[
+                tr("AUDIO_MODE_VOCAL_COVER"),
+                tr("AUDIO_MODE_INSTRUMENTAL")
+            ],
+            name="Workflow Mode Selection"
+        )
+        self.mode_choice.SetSelection(0)
+        self.mode_choice.SetToolTip(tr("TIP_AUDIO_MODE"))
+        self.mode_choice.Bind(wx.EVT_CHOICE, self.on_mode_changed)
+        mode_sizer.Add(self.mode_choice, 1, wx.EXPAND | wx.RIGHT, 10)
+        param_box_sizer.Add(mode_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
+
         # Preset Choice + Cloud Settings Button
         preset_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.preset_label = wx.StaticText(self, label=tr("AUDIO_LABEL_PRESET"))
@@ -1905,10 +1925,10 @@ class AudioSanitizerPanel(wx.Panel):
 
         self.pitch_spin = wx.SpinCtrlDouble(
             self.adv_panel,
-            value="2.5",
+            value="2.2",
             min=-12.0,
             max=12.0,
-            inc=0.5,
+            inc=0.1,
             name="Micro Pitch Shift (Semitones/Cents)"
         )
         self.pitch_spin.SetDigits(1)
@@ -1989,9 +2009,18 @@ class AudioSanitizerPanel(wx.Panel):
             label="Center Vocal Suppression & Anti-Whisper Scrambler",
             name="Center Vocal Suppression Checkbox"
         )
-        self.vocal_chk.SetValue(True)
+        self.vocal_chk.SetValue(False)
         self.vocal_chk.SetToolTip(tr("TIP_AUDIO_VOCAL"))
         chk_sizer.Add(self.vocal_chk, 0, wx.ALL, 2)
+
+        self.articulation_chk = wx.CheckBox(
+            self.adv_panel,
+            label=tr("AUDIO_ARTICULATION_SOFTENER"),
+            name="Anti-ASR Vocal Articulation Softener Checkbox"
+        )
+        self.articulation_chk.SetValue(True)
+        self.articulation_chk.SetToolTip(tr("TIP_AUDIO_ARTICULATION"))
+        chk_sizer.Add(self.articulation_chk, 0, wx.ALL, 2)
 
         self.preamble_chk = wx.CheckBox(
             self.adv_panel,
@@ -2168,6 +2197,35 @@ class AudioSanitizerPanel(wx.Panel):
             self.cancel_btn.Enable(False)
             self.set_status("Cancelling audio processing...")
             self.log_ctrl.AppendText("\nCancellation signal sent to worker thread...\n")
+
+    def on_mode_changed(self, event: wx.CommandEvent):
+        mode_idx = self.mode_choice.GetSelection()
+        if mode_idx == 0:  # Vocal Cover Mode (Melodic Evasion & Anti-ASR)
+            self.pitch_spin.SetValue(2.2)
+            self.tempo_spin.SetValue(0.940)
+            self.jitter_chk.SetValue(True)
+            self.bode_chk.SetValue(False)
+            self.decoy_chk.SetValue(True)
+            self.allpass_chk.SetValue(True)
+            self.reamping_chk.SetValue(True)
+            self.vocal_chk.SetValue(False)
+            if hasattr(self, "articulation_chk"):
+                self.articulation_chk.SetValue(True)
+            self.preamble_chk.SetValue(False)
+            self.set_status("Vocal Cover Mode active: Vocal melody, pitch, and phrasing preserved.")
+        else:  # Instrumental Mode (Complete Vocal Elimination)
+            self.pitch_spin.SetValue(2.5)
+            self.tempo_spin.SetValue(0.940)
+            self.jitter_chk.SetValue(True)
+            self.bode_chk.SetValue(True)
+            self.decoy_chk.SetValue(True)
+            self.allpass_chk.SetValue(True)
+            self.reamping_chk.SetValue(True)
+            self.vocal_chk.SetValue(True)
+            if hasattr(self, "articulation_chk"):
+                self.articulation_chk.SetValue(False)
+            self.preamble_chk.SetValue(True)
+            self.set_status("Instrumental Mode active: Center vocals completely eliminated.")
 
     def on_preset_changed(self, event: wx.CommandEvent):
         idx = self.preset_choice.GetSelection()
@@ -2358,21 +2416,34 @@ class AudioSanitizerPanel(wx.Panel):
                 return
             output_path = save_dialog.GetPath()
 
+        mode_idx = self.mode_choice.GetSelection() if hasattr(self, "mode_choice") else 0
+        is_vocal_cover = (mode_idx == 0)
         preset_idx = self.preset_choice.GetSelection()
-        mode_val = "cloud_api" if preset_idx == 5 else "master_evasion"
+
+        if preset_idx == 5:
+            mode_val = "cloud_api"
+        elif is_vocal_cover:
+            mode_val = "vocal_cover"
+        else:
+            mode_val = "instrumental"
 
         options = AudioSanitizeOptions(
             mode=mode_val,
             pitch_shift_semitones=float(self.pitch_spin.GetValue()),
             tempo_factor=float(self.tempo_spin.GetValue()),
+            enable_vocal_articulation_softener=self.articulation_chk.IsChecked() if hasattr(self, "articulation_chk") else is_vocal_cover,
             enable_micro_chrono_jitter=self.jitter_chk.IsChecked(),
             enable_bode_freq_shifter=self.bode_chk.IsChecked(),
+            enable_triple_band_bode=self.bode_chk.IsChecked() and not is_vocal_cover,
             enable_adversarial_peaks=self.decoy_chk.IsChecked(),
             enable_phase_dispersion=self.allpass_chk.IsChecked(),
             enable_reamping_room=self.reamping_chk.IsChecked(),
-            enable_vocal_cut=self.vocal_chk.IsChecked(),
-            enable_formant_scrambler=self.vocal_chk.IsChecked(),
+            enable_total_vocal_cut=(not is_vocal_cover) and self.vocal_chk.IsChecked(),
+            enable_vocal_cut=self.vocal_chk.IsChecked() if not is_vocal_cover else False,
+            enable_formant_scrambler=self.vocal_chk.IsChecked() if not is_vocal_cover else False,
+            enable_continuous_bed=(not is_vocal_cover) and self.preamble_chk.IsChecked(),
             inject_preamble=self.preamble_chk.IsChecked(),
+            use_ambient_intro=False,
             apply_eq_filters=self.filter_chk.IsChecked(),
             apply_dither=self.dither_chk.IsChecked(),
             trim_duration=self.trim_chk.IsChecked(),
@@ -2486,6 +2557,18 @@ class AudioSanitizerPanel(wx.Panel):
 
         if hasattr(self, "param_box"):
             self.param_box.SetLabel(tr("AUDIO_GROUP_PARAMS"))
+        if hasattr(self, "mode_label"):
+            self.mode_label.SetLabel(tr("AUDIO_LABEL_MODE"))
+        if hasattr(self, "mode_choice"):
+            cur_mode = self.mode_choice.GetSelection()
+            self.mode_choice.Clear()
+            self.mode_choice.Append(tr("AUDIO_MODE_VOCAL_COVER"))
+            self.mode_choice.Append(tr("AUDIO_MODE_INSTRUMENTAL"))
+            self.mode_choice.SetSelection(cur_mode if cur_mode in (0, 1) else 0)
+            self.mode_choice.SetToolTip(tr("TIP_AUDIO_MODE"))
+        if hasattr(self, "articulation_chk"):
+            self.articulation_chk.SetLabel(tr("AUDIO_ARTICULATION_SOFTENER"))
+            self.articulation_chk.SetToolTip(tr("TIP_AUDIO_ARTICULATION"))
         if hasattr(self, "preset_label"):
             self.preset_label.SetLabel(tr("AUDIO_LABEL_PRESET"))
         if hasattr(self, "cloud_btn"):

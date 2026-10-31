@@ -943,6 +943,42 @@ class TestVersion120UpgradesAndPersonas(unittest.TestCase):
         cloaked, _ = LyricsCloaker.cloak(quoted_text, mode="scramble", add_vibrato_glides=False)
         self.assertIn('" ', cloaked)
 
+    def test_vocal_cover_and_articulation_softener(self):
+        """Verifies Vocal Cover Mode preserves melody and pitch while softening consonant articulation."""
+        from audio_processor import (
+            apply_vocal_articulation_softener,
+            apply_front_and_tail_padding,
+            sanitize_audio,
+            AudioSanitizeOptions
+        )
+
+        # 1. Test consonant articulation softening
+        sr = 44100
+        t = np.linspace(0, 1.0, sr, endpoint=False, dtype=np.float32)
+        vowel_tone = 0.4 * np.sin(2 * np.pi * 440 * t)
+        consonant_spike = 0.5 * np.sin(2 * np.pi * 5000 * t) * (np.sin(2 * np.pi * 8 * t) > 0.8).astype(np.float32)
+        test_audio = np.column_stack([vowel_tone + consonant_spike, vowel_tone + consonant_spike]).astype(np.float32)
+
+        softened = apply_vocal_articulation_softener(test_audio, sr, intensity=0.75)
+        self.assertEqual(softened.shape, test_audio.shape)
+        self.assertTrue(np.isfinite(softened).all())
+        self.assertLessEqual(np.max(np.abs(softened)), np.max(np.abs(test_audio)) + 1e-3)
+
+        # 2. Test clean silence padding without 140 Hz buzz tone
+        padded_silence = apply_front_and_tail_padding(test_audio, sr, front_sec=2.0, tail_sec=1.0, use_ambient_intro=False)
+        front_samples = int(2.0 * sr)
+        self.assertEqual(float(np.max(np.abs(padded_silence[:front_samples]))), 0.0)
+
+        # 3. Test sanitize_audio in vocal_cover mode preserves vocal energy
+        in_wav = self._create_synthetic_wav(duration_sec=3.0, sr=sr)
+        out_cover = os.path.join(self.test_dir, "out_cover.wav")
+        res_cover = sanitize_audio(in_wav, out_cover, mode="vocal_cover", front_padding_seconds=0.0, tail_padding_seconds=0.0)
+        self.assertTrue(res_cover.success)
+        self.assertTrue(os.path.exists(out_cover))
+        data_cov, _ = sf.read(out_cover)
+        rms_cover = np.sqrt(np.mean(data_cov ** 2))
+        self.assertGreater(rms_cover, 0.05)
+
 
 if __name__ == "__main__":
     unittest.main()

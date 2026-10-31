@@ -133,48 +133,53 @@ class AudioInfo:
 @dataclass
 class AudioSanitizeOptions:
     """Configuration options for audio sanitization."""
-    mode: str = "nuclear_cloak"              # "nuclear_cloak" (Ultimate), "master_evasion", "pure_instrumental", "phone_remic", "cloud_api", "fast", or "stem"
+    mode: str = "vocal_cover"                # "vocal_cover" (Suno Covers / Melodic Evasion), "instrumental" (Zero Lead Vocal), "master_evasion", "nuclear_cloak", "cloud_api"
 
     # Macro Pitch & Tempo Warping
-    pitch_shift_semitones: float = 2.5       # Pitch shift (+2.5 st, or -2.0 to +3.0)
+    pitch_shift_semitones: float = 2.2       # Pitch shift (+2.2 st micro-transposition breaks discrete Chroma bins)
     tempo_factor: float = 0.94               # Speed adjustment (~0.94 = -6% slowdown)
 
+    # Vocal Cover & Anti-ASR Articulation Parameters
+    enable_vocal_articulation_softener: bool = True # Softens sharp consonants (Anti-Whisper) while preserving melody
+    articulation_intensity: float = 0.70            # Softener blend intensity (0.4 - 0.85)
+
     # Dynamic Continuous Pitch Wobble (Anti-VIBE)
-    enable_pitch_wobble: bool = True         # Swept pitch vibrato
+    enable_pitch_wobble: bool = False        # Swept pitch vibrato (disabled in vocal_cover to keep melody stable)
     pitch_wobble_freq: float = 0.22          # LFO rate in Hz
     pitch_wobble_depth: float = 0.28         # Modulation depth (28%)
 
     # Multi-Vector DSP Evasion Flags & Parameters
     enable_micro_chrono_jitter: bool = True  # Non-linear dynamic time-warping
-    jitter_intensity_ms: float = 16.0        # 10–25 ms stochastic wow-and-flutter
-    enable_bode_freq_shifter: bool = True    # Hilbert single-sideband frequency shift
+    jitter_intensity_ms: float = 18.0        # 15–22 ms stochastic wow-and-flutter
+    enable_bode_freq_shifter: bool = False   # Hilbert single-sideband frequency shift (disabled in vocal_cover)
     bode_shift_hz: float = 8.5               # +5.0 to +12.0 Hz non-harmonic shift
-    enable_triple_band_bode: bool = True     # Asymmetric 3-band frequency shifting
+    enable_triple_band_bode: bool = False    # Asymmetric 3-band frequency shifting (disabled in vocal_cover)
     bode_wet_mix: float = 0.85               # Wet blend for frequency shifter
-    enable_adversarial_peaks: bool = True    # STFT decoy peak injection
-    decoy_peak_intensity: float = 1.15       # Decoy peak multiplier (1.1x to 1.3x)
+    enable_adversarial_peaks: bool = True    # STFT decoy peak injection (Hijacks Audible Magic landmark picker)
+    decoy_peak_intensity: float = 1.25       # Decoy peak multiplier (1.2x to 1.35x)
     enable_phase_dispersion: bool = True     # Schroeder all-pass phase dispersion
     enable_reamping_room: bool = True        # Virtual acoustic room re-amping
-    reamping_wet_mix: float = 0.28           # 20–35% room acoustic blend
+    reamping_wet_mix: float = 0.22           # 15–25% room acoustic blend
 
-    # Anti-Whisper & Vocal Annihilation parameters
-    enable_total_vocal_cut: bool = True      # 100% center vocal phase annihilation
-    enable_vocal_cut: bool = True            # Mid/side center vocal suppression
+    # Anti-Whisper & Vocal Annihilation parameters (Instrumental Mode)
+    enable_total_vocal_cut: bool = False     # 100% center vocal phase annihilation (False for vocal_cover, True for instrumental)
+    enable_vocal_cut: bool = False           # Mid/side center vocal suppression
     vocal_cut_depth: float = 0.92            # Vocal subtraction depth (0.75 - 0.98)
-    enable_formant_scrambler: bool = True    # Formant ring modulation
+    enable_formant_scrambler: bool = False   # Formant ring modulation
     ring_mod_carrier_hz: float = 65.0        # Swept carrier frequency (Hz)
     ring_mod_wet: float = 0.35               # Wet blend for ring modulation
     comb_delay_ms: float = 6.8               # Comb filter delay in ms
     comb_feedback: float = 0.32              # Comb filter feedback
 
-    # Full-Track Camouflage Bed & Acoustic Padding (The ABS Technique)
-    enable_continuous_bed: bool = True       # Full-track analog drone + vinyl texture
-    drone_bed_volume: float = 0.035          # Drone volume (~ -29 dBFS)
-    inject_preamble: bool = True             # Inject synthetic intro ambiance
-    preamble_duration_seconds: float = 3.5   # Intro duration in seconds
+    # Full-Track Camouflage Bed & Acoustic Padding
+    enable_continuous_bed: bool = False      # Full-track analog drone (False for vocal_cover, True for instrumental)
+    drone_bed_volume: float = 0.030          # Drone volume
+    inject_preamble: bool = True             # Inject intro padding
+    preamble_duration_seconds: float = 2.0   # Intro duration in seconds
     preamble_crossfade_seconds: float = 0.35 # Equal-power crossfade duration
-    front_padding_seconds: float = 4.0       # Front padding in seconds (Silence / Ambient)
-    tail_padding_seconds: float = 2.0        # Tail padding in seconds
+    front_padding_seconds: float = 2.0       # Front padding in seconds (Silence)
+    tail_padding_seconds: float = 1.5        # Tail padding in seconds
+    use_ambient_intro: bool = False          # Clean silence padding without 140 Hz buzz tone
 
     # Ultrasonic & Watermark Filter
     apply_eq_filters: bool = True            # 25 Hz HP & 18.5 kHz LP
@@ -612,10 +617,10 @@ def apply_front_and_tail_padding(
 
     if use_ambient_intro and f_samples > 0:
         t_f = np.linspace(0, front_sec, f_samples, endpoint=False, dtype=np.float32)
-        env = (np.linspace(0.05, 1.0, f_samples, dtype=np.float32) ** 3)
-        tone = 0.02 * np.sin(2.0 * np.pi * 140.0 * t_f) * env
-        hiss = np.random.normal(0, 0.003, f_samples).astype(np.float32)
-        front_track = (tone + hiss).astype(np.float32)
+        env = (np.linspace(0.05, 1.0, f_samples, dtype=np.float32) ** 2)
+        # Warm, subtle analog tape floor (-55 dBFS), zero artificial 140 Hz sine tone
+        hiss = (np.random.normal(0, 0.0015, f_samples).astype(np.float32) * env).astype(np.float32)
+        front_track = hiss
         if channels >= 2:
             front_track = np.column_stack([front_track, np.roll(front_track, int(0.002 * sr))])
     else:
@@ -832,6 +837,57 @@ def apply_anti_whisper_vocal_scrambler(
         delayed[d_samples:] = out[:-d_samples]
 
     out = out + comb_feedback * delayed
+    return out.astype(np.float32)
+
+
+# =============================================================================
+# Vector 10b: Anti-ASR Vocal Articulation Softener & Melodic Preserver
+# =============================================================================
+
+def apply_vocal_articulation_softener(
+    data: np.ndarray,
+    sr: int,
+    intensity: float = 0.65,
+    consonant_low_hz: float = 3200.0,
+    consonant_high_hz: float = 7500.0
+) -> np.ndarray:
+    """
+    Anti-ASR Vocal Articulation Softener:
+    Preserves melodic pitch, musical intervals, and fundamental vowel resonance
+    (100 Hz - 3000 Hz) so Suno can cleanly track melody, pitch, and chord progressions.
+    Simultaneously softens sharp consonant transients (sibilants, plosives: t, p, k, s, ch)
+    and diffuses phase in the 3.2 kHz - 7.5 kHz band to degrade Automatic Speech
+    Recognition (Whisper / ASR) transcription confidence below the copyright filter threshold.
+    """
+    if len(data) == 0 or intensity <= 0.0:
+        return data
+
+    out = np.copy(data)
+    nyquist = sr * 0.49
+    low_cut = min(consonant_low_hz, nyquist * 0.5)
+    high_cut = min(consonant_high_hz, nyquist)
+
+    if low_cut >= high_cut:
+        return out
+
+    sos_consonant = signal.butter(2, [low_cut, high_cut], btype='bandpass', fs=sr, output='sos')
+    consonant_band = signal.sosfilt(sos_consonant, out, axis=0)
+
+    # Dynamic crest-factor softening (tames sharp consonant transient bursts)
+    rms_level = np.sqrt(np.mean(consonant_band ** 2, axis=0, keepdims=True)) + 1e-7
+    thresh = float(np.mean(rms_level)) * (3.5 - 1.8 * float(intensity))
+    thresh = max(thresh, 1e-4)
+
+    # Smooth soft-saturation on the consonant band
+    softened = np.tanh(consonant_band / thresh) * thresh
+
+    # Micro phase diffusion on the consonant band to smear temporal alignment
+    w0 = 2.0 * np.pi * min(4800.0, nyquist * 0.8)
+    b_ap, a_ap = _get_cached_bilinear(w0, 1.2, sr)
+    diffused_consonant = signal.lfilter(b_ap, a_ap, softened, axis=0)
+
+    blended_consonant = (1.0 - intensity) * consonant_band + intensity * diffused_consonant
+    out = (out - consonant_band) + blended_consonant
     return out.astype(np.float32)
 
 
@@ -1169,37 +1225,40 @@ def benchmark_evasion_metrics(original_path: str, sanitized_path: str) -> dict:
 def sanitize_audio(
     input_path: str,
     output_path: str,
-    mode: str = "nuclear_cloak",
-    pitch_shift_semitones: float = 2.5,
+    mode: str = "vocal_cover",
+    pitch_shift_semitones: float = 2.2,
     tempo_factor: float = 0.94,
-    enable_pitch_wobble: bool = True,
+    enable_vocal_articulation_softener: bool = True,
+    articulation_intensity: float = 0.70,
+    enable_pitch_wobble: bool = False,
     pitch_wobble_freq: float = 0.22,
     pitch_wobble_depth: float = 0.28,
     enable_micro_chrono_jitter: bool = True,
-    jitter_intensity_ms: float = 16.0,
-    enable_bode_freq_shifter: bool = True,
+    jitter_intensity_ms: float = 18.0,
+    enable_bode_freq_shifter: bool = False,
     bode_shift_hz: float = 8.5,
-    enable_triple_band_bode: bool = True,
+    enable_triple_band_bode: bool = False,
     enable_adversarial_peaks: bool = True,
-    decoy_peak_intensity: float = 1.15,
+    decoy_peak_intensity: float = 1.25,
     enable_phase_dispersion: bool = True,
     enable_reamping_room: bool = True,
-    reamping_wet_mix: float = 0.28,
-    enable_total_vocal_cut: bool = True,
-    enable_vocal_cut: bool = True,
+    reamping_wet_mix: float = 0.22,
+    enable_total_vocal_cut: bool = False,
+    enable_vocal_cut: bool = False,
     vocal_cut_depth: float = 0.92,
-    enable_formant_scrambler: bool = True,
+    enable_formant_scrambler: bool = False,
     ring_mod_carrier_hz: float = 65.0,
     ring_mod_wet: float = 0.35,
     comb_delay_ms: float = 6.8,
     comb_feedback: float = 0.32,
-    enable_continuous_bed: bool = True,
-    drone_bed_volume: float = 0.035,
+    enable_continuous_bed: bool = False,
+    drone_bed_volume: float = 0.030,
     inject_preamble: bool = True,
-    preamble_duration_seconds: float = 3.5,
+    preamble_duration_seconds: float = 2.0,
     preamble_crossfade_seconds: float = 0.35,
-    front_padding_seconds: float = 4.0,
-    tail_padding_seconds: float = 2.0,
+    front_padding_seconds: float = 2.0,
+    tail_padding_seconds: float = 1.5,
+    use_ambient_intro: bool = False,
     apply_eq_filters: bool = True,
     apply_dither: bool = True,
     vocal_stem_attenuation_db: float = -18.0,
@@ -1263,11 +1322,19 @@ def sanitize_audio(
         if processed_data is None:
             data_dsp = np.copy(data)
 
-            # Step 1: Vocal Obliteration
+            # Step 1: Vocal Treatment
             check_cancelled()
-            if mode in ("nuclear_cloak", "pure_instrumental") or enable_total_vocal_cut:
+            if mode in ("instrumental", "nuclear_cloak", "pure_instrumental") or enable_total_vocal_cut:
                 log_msg(22, "Applying Total Center Vocal Annihilation (Zero Lead Vocal, bass preserved <160 Hz)...")
                 data_dsp = apply_total_center_vocal_annihilation(data_dsp, sr=sr)
+            elif mode == "vocal_cover":
+                # Vocal Cover Mode: Keep lead vocals intact and centered!
+                # Apply Anti-ASR Vocal Articulation Softener to degrade Whisper/moderation without harming melodic pitch
+                if enable_vocal_articulation_softener:
+                    log_msg(22, f"Applying Anti-ASR Vocal Articulation Softener (intensity={articulation_intensity*100:.0f}%, consonants softened, pitch & melody preserved)...")
+                    data_dsp = apply_vocal_articulation_softener(data_dsp, sr=sr, intensity=articulation_intensity)
+                else:
+                    log_msg(22, "Vocal Cover Mode active: Lead vocals preserved.")
             elif enable_vocal_cut or enable_formant_scrambler:
                 log_msg(22, f"Applying Vocal Suppression (depth={vocal_cut_depth*100:.0f}%) & Swept Formant Ring Mod ({ring_mod_carrier_hz:.0f} Hz)...")
                 data_dsp = apply_anti_whisper_vocal_scrambler(
@@ -1282,12 +1349,14 @@ def sanitize_audio(
 
             # Step 2: Asymmetric Bode Frequency Shifter
             check_cancelled()
-            if mode == "nuclear_cloak" or enable_triple_band_bode:
-                log_msg(36, "Applying Triple-Band Asymmetric Bode Shifter (+12 Hz Mids, -16 Hz Highs to shatter chroma)...")
-                data_dsp = apply_triple_band_bode_shifter(data_dsp, sr=sr, mid_shift_hz=12.0, top_shift_hz=-16.0)
-            elif enable_bode_freq_shifter and bode_shift_hz != 0.0:
-                log_msg(36, f"Applying Hilbert Bode Frequency Shifter (+{bode_shift_hz:.1f} Hz non-harmonic shift)...")
-                data_dsp = apply_bode_frequency_shifter(data_dsp, sr=sr, shift_hz=bode_shift_hz, wet=0.85)
+            # Do NOT apply inharmonic Bode shift in vocal_cover mode as it destroys melodic intervals
+            if mode != "vocal_cover":
+                if mode == "nuclear_cloak" or enable_triple_band_bode:
+                    log_msg(36, "Applying Triple-Band Asymmetric Bode Shifter (+12 Hz Mids, -16 Hz Highs to shatter chroma)...")
+                    data_dsp = apply_triple_band_bode_shifter(data_dsp, sr=sr, mid_shift_hz=12.0, top_shift_hz=-16.0)
+                elif enable_bode_freq_shifter and bode_shift_hz != 0.0:
+                    log_msg(36, f"Applying Hilbert Bode Frequency Shifter (+{bode_shift_hz:.1f} Hz non-harmonic shift)...")
+                    data_dsp = apply_bode_frequency_shifter(data_dsp, sr=sr, shift_hz=bode_shift_hz, wet=0.85)
 
             # Step 3: Dynamic Micro-Chrono Jitter
             check_cancelled()
@@ -1298,7 +1367,7 @@ def sanitize_audio(
             # Step 4: Adversarial Pseudo-Peak Injection
             check_cancelled()
             if enable_adversarial_peaks:
-                log_msg(58, f"Injecting Adversarial Pseudo-Peaks (x{decoy_peak_intensity:.2f} decoy magnitude in STFT plane)...")
+                log_msg(58, f"Injecting Adversarial Pseudo-Peaks (x{decoy_peak_intensity:.2f} decoy magnitude in STFT plane to hijack landmark hashes)...")
                 data_dsp = apply_adversarial_peak_injection(data_dsp, sr=sr, decoy_intensity=decoy_peak_intensity)
 
             # Step 5: Schroeder All-Pass Phase Dispersion
@@ -1307,9 +1376,13 @@ def sanitize_audio(
                 log_msg(66, "Applying Schroeder All-Pass Phase Dispersion (4 cascaded biquads, 100% flat magnitude)...")
                 data_dsp = apply_schroeder_phase_dispersion(data_dsp, sr=sr)
 
-            # Step 6: Full-Track Camouflage Harmonic Drone Bed
+            # Step 6: Full-Track Camouflage Texture / Drone Bed
             check_cancelled()
-            if mode == "nuclear_cloak" or enable_continuous_bed:
+            if mode == "vocal_cover":
+                # In vocal cover mode, inject subtle analog tape texture WITHOUT clashing tonal drone
+                log_msg(74, "Injecting Subtle Acoustic Camouflage Texture (Decoy STFT micro-peaks, zero tonal drone)...")
+                data_dsp = apply_continuous_camouflage_bed(data_dsp, sr=sr, drone_volume=0.0, texture_volume=0.0035)
+            elif mode in ("nuclear_cloak", "instrumental") or enable_continuous_bed:
                 log_msg(74, "Injecting Full-Track Camouflage Harmonic Drone Bed & Vinyl Texture (-26 dBFS decoy layer)...")
                 data_dsp = apply_continuous_camouflage_bed(data_dsp, sr=sr, drone_volume=drone_bed_volume)
 
@@ -1321,7 +1394,7 @@ def sanitize_audio(
 
             # Step 8: Continuous Pitch Wobble & Rubberband Shift
             check_cancelled()
-            if mode == "nuclear_cloak" or enable_pitch_wobble:
+            if mode != "vocal_cover" and (mode == "nuclear_cloak" or enable_pitch_wobble):
                 log_msg(86, f"Applying Continuous Pitch Wobble (LFO f={pitch_wobble_freq:.2f} Hz, base={pitch_shift_semitones:+.1f} st, formant shifted)...")
                 data_dsp = apply_continuous_pitch_wobble(
                     data_dsp,
@@ -1332,7 +1405,7 @@ def sanitize_audio(
                     wobble_depth=pitch_wobble_depth
                 )
             elif abs(pitch_shift_semitones) > 0.01 or abs(tempo_factor - 1.0) > 0.005:
-                log_msg(86, f"Applying Macro Pitch ({pitch_shift_semitones:+.1f} st) & Tempo Stretch ({tempo_factor:.2f}x)...")
+                log_msg(86, f"Applying Harmonic Key Transposition ({pitch_shift_semitones:+.1f} st) & Tempo Stretch ({tempo_factor:.2f}x) with Formant Shift...")
                 data_dsp = apply_pitch_and_tempo_shift(data_dsp, sr=sr, semitones=pitch_shift_semitones, tempo_factor=tempo_factor)
 
             processed_data = data_dsp
@@ -1342,13 +1415,14 @@ def sanitize_audio(
         # -------------------------------------------------------------
         check_cancelled()
         if front_padding_seconds > 0.0 or tail_padding_seconds > 0.0:
-            log_msg(90, f"Applying Acoustic Padding (+{front_padding_seconds:.1f}s front ambient pad, +{tail_padding_seconds:.1f}s tail)...")
+            pad_type_str = "ambient pad" if use_ambient_intro else "clean silence"
+            log_msg(90, f"Applying Acoustic Padding (+{front_padding_seconds:.1f}s front {pad_type_str}, +{tail_padding_seconds:.1f}s tail)...")
             processed_data = apply_front_and_tail_padding(
                 processed_data,
                 sr=sr,
                 front_sec=front_padding_seconds,
                 tail_sec=tail_padding_seconds,
-                use_ambient_intro=True
+                use_ambient_intro=use_ambient_intro
             )
 
         # -------------------------------------------------------------
@@ -1570,34 +1644,37 @@ class AudioProcessor:
             mode=mode,
             pitch_shift_semitones=options.pitch_shift_semitones,
             tempo_factor=options.tempo_factor,
-            enable_pitch_wobble=getattr(options, 'enable_pitch_wobble', True),
+            enable_vocal_articulation_softener=getattr(options, 'enable_vocal_articulation_softener', True),
+            articulation_intensity=getattr(options, 'articulation_intensity', 0.65),
+            enable_pitch_wobble=getattr(options, 'enable_pitch_wobble', False),
             pitch_wobble_freq=getattr(options, 'pitch_wobble_freq', 0.22),
             pitch_wobble_depth=getattr(options, 'pitch_wobble_depth', 0.28),
             enable_micro_chrono_jitter=getattr(options, 'enable_micro_chrono_jitter', True),
-            jitter_intensity_ms=getattr(options, 'jitter_intensity_ms', 16.0),
-            enable_bode_freq_shifter=getattr(options, 'enable_bode_freq_shifter', True),
+            jitter_intensity_ms=getattr(options, 'jitter_intensity_ms', 18.0),
+            enable_bode_freq_shifter=getattr(options, 'enable_bode_freq_shifter', False),
             bode_shift_hz=getattr(options, 'bode_shift_hz', 8.5),
-            enable_triple_band_bode=getattr(options, 'enable_triple_band_bode', True),
+            enable_triple_band_bode=getattr(options, 'enable_triple_band_bode', False),
             enable_adversarial_peaks=getattr(options, 'enable_adversarial_peaks', True),
-            decoy_peak_intensity=getattr(options, 'decoy_peak_intensity', 1.15),
+            decoy_peak_intensity=getattr(options, 'decoy_peak_intensity', 1.25),
             enable_phase_dispersion=getattr(options, 'enable_phase_dispersion', True),
             enable_reamping_room=getattr(options, 'enable_reamping_room', True),
-            reamping_wet_mix=getattr(options, 'reamping_wet_mix', 0.28),
-            enable_total_vocal_cut=getattr(options, 'enable_total_vocal_cut', True),
-            enable_vocal_cut=getattr(options, 'enable_vocal_cut', True),
+            reamping_wet_mix=getattr(options, 'reamping_wet_mix', 0.22),
+            enable_total_vocal_cut=getattr(options, 'enable_total_vocal_cut', False),
+            enable_vocal_cut=getattr(options, 'enable_vocal_cut', False),
             vocal_cut_depth=getattr(options, 'vocal_cut_depth', 0.92),
-            enable_formant_scrambler=getattr(options, 'enable_formant_scrambler', True),
+            enable_formant_scrambler=getattr(options, 'enable_formant_scrambler', False),
             ring_mod_carrier_hz=getattr(options, 'ring_mod_carrier_hz', 65.0),
             ring_mod_wet=getattr(options, 'ring_mod_wet', 0.35),
             comb_delay_ms=getattr(options, 'comb_delay_ms', 6.8),
             comb_feedback=getattr(options, 'comb_feedback', 0.32),
-            enable_continuous_bed=getattr(options, 'enable_continuous_bed', True),
-            drone_bed_volume=getattr(options, 'drone_bed_volume', 0.035),
+            enable_continuous_bed=getattr(options, 'enable_continuous_bed', False),
+            drone_bed_volume=getattr(options, 'drone_bed_volume', 0.030),
             inject_preamble=getattr(options, 'inject_preamble', True),
-            preamble_duration_seconds=getattr(options, 'preamble_duration_seconds', 3.5),
+            preamble_duration_seconds=getattr(options, 'preamble_duration_seconds', 2.0),
             preamble_crossfade_seconds=getattr(options, 'preamble_crossfade_seconds', 0.35),
-            front_padding_seconds=getattr(options, 'front_padding_seconds', 4.0),
-            tail_padding_seconds=getattr(options, 'tail_padding_seconds', 2.0),
+            front_padding_seconds=getattr(options, 'front_padding_seconds', 2.0),
+            tail_padding_seconds=getattr(options, 'tail_padding_seconds', 1.5),
+            use_ambient_intro=getattr(options, 'use_ambient_intro', False),
             apply_eq_filters=options.apply_eq_filters,
             apply_dither=options.apply_dither,
             vocal_stem_attenuation_db=getattr(options, 'vocal_stem_attenuation_db', -18.0),
