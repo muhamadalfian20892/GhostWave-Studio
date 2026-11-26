@@ -29,7 +29,7 @@ from typing import Callable, Optional, Tuple
 import numpy as np
 import soundfile as sf
 
-APP_VERSION = "1.6.2"
+from ghostwave.version import APP_VERSION
 
 
 CONFIG_FILE_PATH = os.path.join(os.path.expanduser("~"), ".suno_sanitizer_cloud_config.json")
@@ -49,7 +49,7 @@ class CloudApiConfig:
     def load(cls) -> "CloudApiConfig":
         """Loads configuration from persistent encrypted .sn vault."""
         try:
-            from config_manager import GhostWaveConfig
+            from ghostwave.config_manager import GhostWaveConfig
             sn_cfg = GhostWaveConfig.load()
             return cls(
                 provider=sn_cfg.cloud_provider,
@@ -64,7 +64,7 @@ class CloudApiConfig:
     def save(self) -> None:
         """Saves current configuration to persistent encrypted .sn vault."""
         try:
-            from config_manager import GhostWaveConfig
+            from ghostwave.config_manager import GhostWaveConfig
             sn_cfg = GhostWaveConfig.load()
             sn_cfg.cloud_provider = self.provider
             sn_cfg.cloud_api_token = self.api_token

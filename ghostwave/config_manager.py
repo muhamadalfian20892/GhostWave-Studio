@@ -1,7 +1,7 @@
 """
-GhostWave Studio v1.0 - Encrypted Configuration & Profile Vault (.sn)
+GhostWave Studio - Encrypted Configuration & Profile Vault (.sn)
 
-Provides military-grade encrypted persistence for all application settings,
+Provides Fernet (AES-128-CBC + HMAC-SHA256) encrypted persistence for all application settings,
 Cloud API tokens, DSP presets, and user moderation blacklists.
 Saved exclusively as an encrypted binary profile container (.sn).
 Only GhostWave Studio can decrypt and parse this configuration.
@@ -20,6 +20,8 @@ from typing import Any, Optional
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+from ghostwave.version import APP_VERSION
 
 
 # File format signature: 16-byte magic identifier
@@ -55,7 +57,7 @@ class GhostWaveConfig:
     """
     # Metadata
     app_name: str = "GhostWave Studio"
-    app_version: str = "1.6.2"
+    app_version: str = APP_VERSION
     check_updates_on_startup: bool = True
     language: str = "en"
     first_run: bool = True
@@ -69,13 +71,19 @@ class GhostWaveConfig:
     cloud_timeout_seconds: int = 180              # Remote job timeout in seconds
 
     # Audio DSP & Sanitization Preferences
+    target_platform: str = "suno_v6"              # "suno_v6", "google_lyria", "udio", "youtube", "tiktok", "custom"
     workflow_mode: str = "vocal_cover"            # "vocal_cover" or "instrumental"
     default_preset: str = "Complete Sanitization (Recommended)"
+    enable_ai_watermark_neutralizer: bool = True  # Neutralize Google SynthID / AudioSeal / WavMark
+    use_psychoacoustic_masking: bool = True       # ISO 226 equal-loudness hearing curve
+    formant_shift_semitones: float = 0.0          # Vocal timbre / formant shift
+    room_reverb_wet: float = 0.22                 # Virtual room reverb depth
+    vocal_reduction_depth: float = 0.90           # Vocal suppression depth
     enable_vocal_articulation_softener: bool = True
     articulation_intensity: float = 0.65
     export_format: str = "wav"                    # "wav", "320k", "192k"
-    pitch_shift_semitones: float = 2.5
-    tempo_factor: float = 0.940
+    pitch_shift_semitones: float = 2.0
+    tempo_factor: float = 0.950
     max_duration_seconds: float = 24.0
     slicer_chunk_duration: float = 22.0
     bode_shift_hz: float = 8.5
@@ -94,6 +102,12 @@ class GhostWaveConfig:
     trim_duration: bool = False
     strip_metadata: bool = True
 
+    # Batch Processing & Folder Watcher
+    batch_auto_slice: bool = True
+    batch_slice_duration: float = 22.0
+    batch_watch_input_dir: str = ""
+    batch_watch_output_dir: str = ""
+
     # Lyrics Moderation, Cloaking & Custom Blacklist
     custom_celebrity_blacklist: list[str] = field(default_factory=list)
     filter_profanity: bool = True
@@ -104,6 +118,7 @@ class GhostWaveConfig:
     enable_lyrics_cloaking: bool = True
     lyrics_cloak_mode: str = "scramble"           # "scramble", "syllable", "phonetic", "semantic", "cloud"
     lyrics_preserve_syllables: bool = True
+    lyrics_preserve_rhymes: bool = True
     lyrics_add_vibrato_glides: bool = True
     lyrics_break_ngrams: bool = False
     lyrics_adlib_frequency: float = 0.5           # frequency of adlib insertions (0.0 to 1.0)
@@ -250,7 +265,7 @@ class GhostWaveConfig:
                 pass
 
         # Legacy 2: celebrity_blacklist.json
-        app_dir = Path(__file__).resolve().parent
+        app_dir = Path(__file__).resolve().parent.parent
         legacy_bl = app_dir / "celebrity_blacklist.json"
         if legacy_bl.exists():
             try:

@@ -1,8 +1,8 @@
 """
-Support Ticket Client for GhostWave Studio v1.6.2.
+Support Ticket Client for GhostWave Studio.
 
-Communicates with the secure Cloudflare Worker serverless relay to create tickets,
-retrieve discussion threads, and submit user replies to the private GitHub repository.
+Communicates with the Cloudflare Worker relay to create tickets,
+retrieve discussion threads, and submit user replies to the private repository.
 """
 
 from __future__ import annotations
@@ -15,7 +15,9 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
-SUPPORT_CLIENT_VERSION = "1.6.2"
+from ghostwave.version import APP_VERSION
+
+SUPPORT_CLIENT_VERSION = APP_VERSION
 DEFAULT_WORKER_URL = "https://ghostwave-studio-private.hafiyanajah.workers.dev"
 REQUEST_TIMEOUT_SECONDS = 15.0
 

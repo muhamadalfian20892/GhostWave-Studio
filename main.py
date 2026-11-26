@@ -12,9 +12,9 @@ import argparse
 import os
 import sys
 
-from audio_processor import AudioProcessor, AudioSanitizeOptions, benchmark_evasion_metrics
-from config_manager import GhostWaveConfig, DEFAULT_SN_FILENAME
-from updater import APP_VERSION
+from ghostwave.audio_processor import AudioProcessor, AudioSanitizeOptions, benchmark_evasion_metrics
+from ghostwave.config_manager import GhostWaveConfig, DEFAULT_SN_FILENAME
+from ghostwave.version import APP_VERSION
 
 
 def print_banner():
@@ -22,6 +22,34 @@ def print_banner():
     print(f"GhostWave Studio v{APP_VERSION} - Audio & Lyrics Sanitizer")
     print("Settings Profile (.sn) Active | Suno Preparation Engine")
     print("=" * 64)
+
+
+def _build_cli_options(args: argparse.Namespace, vault: GhostWaveConfig) -> AudioSanitizeOptions:
+    """Builds AudioSanitizeOptions from parsed CLI arguments and the .sn vault."""
+    return AudioSanitizeOptions(
+        mode="cloud_api" if args.preset == "cloud" else "master_evasion",
+        pitch_shift_semitones=args.pitch,
+        tempo_factor=args.tempo,
+        formant_shift_semitones=getattr(args, "formant", 2.0),
+        enable_ai_watermark_neutralizer=getattr(args, "watermark_clean", True),
+        use_psychoacoustic_masking=not getattr(args, "no_psycho", False),
+        enable_micro_chrono_jitter=not args.no_jitter,
+        enable_bode_freq_shifter=not args.no_bode,
+        bode_shift_hz=args.bode_hz,
+        enable_adversarial_peaks=not args.no_decoy,
+        enable_phase_dispersion=not args.no_allpass,
+        enable_reamping_room=not args.no_room,
+        enable_vocal_cut=not args.no_vocal_cut,
+        enable_formant_scrambler=not args.no_vocal_cut,
+        inject_preamble=not args.no_preamble,
+        trim_duration=bool(args.trim and not args.no_trim),
+        max_duration_seconds=args.duration,
+        strip_metadata=True,
+        output_bitrate="320k" if args.format == "mp3" else "wav",
+        cloud_provider=vault.cloud_provider,
+        cloud_api_token=vault.cloud_api_token,
+        cloud_endpoint_url=vault.cloud_endpoint_url,
+    )
 
 
 def run_cli(args: argparse.Namespace) -> int:
@@ -67,31 +95,28 @@ def run_cli(args: argparse.Namespace) -> int:
         print("--------------------------------------------------")
         return 0
 
+    if getattr(args, "preflight", False):
+        if not os.path.exists(output_path):
+            print(f"Error: Pre-flight audit compares an original file (-i) against a processed file (-o). File not found: {output_path}")
+            return 1
+        print(f"\n[Pre-Flight Evasion Simulator] Auditing {os.path.basename(input_path)} against {os.path.basename(output_path)}...")
+        report = processor.simulate_preflight(input_path, output_path)
+        print("=" * 55)
+        print(f"SAFETY SCORE:             {report.get('safety_score', 0)}% ({report.get('verdict_en', report.get('verdict', 'Unknown'))})")
+        print(f"CQT Chroma Similarity:    {report.get('cqt_chroma_similarity_pct', 0.0):.1f}% (Threshold: < 35%)")
+        print(f"Landmark Overlap:         {report.get('landmark_overlap_pct', 0.0):.1f}% (Threshold: < 15%)")
+        print(f"SynthID Watermark Clean:  {report.get('synthid_watermark_neutralized', False)}")
+        print(f"Center Vocal Attenuation: {report.get('vocal_isolation_db', 0.0):.1f} dB")
+        print("-" * 55)
+        print(f"Actionable Advice: {report.get('actionable_advice_en', report.get('actionable_advice', ''))}")
+        print("=" * 55)
+        return 0
+
     print(f"\n[GhostWave Studio] Source Audio: {os.path.basename(input_path)}")
     print(f"[GhostWave Studio] Preset: {args.preset.upper()}")
     print(f"[GhostWave Studio] Settings Profile: (.sn) Loaded")
 
-    options = AudioSanitizeOptions(
-        mode="cloud_api" if args.preset == "cloud" else "master_evasion",
-        pitch_shift_semitones=args.pitch,
-        tempo_factor=args.tempo,
-        enable_micro_chrono_jitter=not args.no_jitter,
-        enable_bode_freq_shifter=not args.no_bode,
-        bode_shift_hz=args.bode_hz,
-        enable_adversarial_peaks=not args.no_decoy,
-        enable_phase_dispersion=not args.no_allpass,
-        enable_reamping_room=not args.no_room,
-        enable_vocal_cut=not args.no_vocal_cut,
-        enable_formant_scrambler=not args.no_vocal_cut,
-        inject_preamble=not args.no_preamble,
-        trim_duration=bool(args.trim and not args.no_trim),
-        max_duration_seconds=args.duration,
-        strip_metadata=True,
-        output_bitrate="320k" if args.format == "mp3" else "wav",
-        cloud_provider=vault.cloud_provider,
-        cloud_api_token=vault.cloud_api_token,
-        cloud_endpoint_url=vault.cloud_endpoint_url
-    )
+    options = _build_cli_options(args, vault)
 
     def cli_progress(pct: int, msg: str):
         print(f"[{pct:3d}%] {msg}")
@@ -128,7 +153,7 @@ def run_lyrics_cli(args: argparse.Namespace) -> int:
     with open(lyrics_path, "r", encoding="utf-8", errors="replace") as f:
         raw_text = f.read()
 
-    from lyrics_processor import LyricsProcessor
+    from ghostwave.lyrics_processor import LyricsProcessor
     vault = GhostWaveConfig.load(args.config_sn) if hasattr(args, "config_sn") and args.config_sn else GhostWaveConfig.load()
     processor = LyricsProcessor()
 
@@ -176,29 +201,8 @@ def run_lyrics_cli(args: argparse.Namespace) -> int:
 
 def run_gui():
     """Initializes wx application loop and displays GhostWave Studio."""
-    import wx
-    from gui import GhostWaveFrame, LanguageSelectionDialog
-    from config_manager import GhostWaveConfig
-    from i18n import init_translations, set_language
-
-    app = wx.App(False)
-    cfg = GhostWaveConfig.load()
-    current_lang = getattr(cfg, "language", "en")
-    init_translations(current_lang)
-
-    if getattr(cfg, "first_run", True):
-        dlg = LanguageSelectionDialog(current_lang=current_lang)
-        if dlg.ShowModal() == wx.ID_OK:
-            chosen = dlg.get_selected_language()
-            set_language(chosen)
-            cfg.language = chosen
-        cfg.first_run = False
-        cfg.save()
-        dlg.Destroy()
-
-    frame = GhostWaveFrame()
-    frame.Show()
-    app.MainLoop()
+    from ghostwave.gui import main as gui_main
+    gui_main()
 
 
 def main():
@@ -226,8 +230,15 @@ def main():
     parser.add_argument("--trim", action="store_true", help="Trim audio to safe duration for Suno clips (disabled by default)")
     parser.add_argument("--no-trim", action="store_true", help="Explicitly disable duration trimming")
     parser.add_argument("--audit-only", action="store_true", help="Only run Chromaprint audit on existing files")
+    parser.add_argument("--preflight", action="store_true", help="Run pre-flight multi-vector evasion simulation")
+    parser.add_argument("--watermark-clean", action="store_true", default=True, help="Neutralize neural AI audio watermarks (Google SynthID / AudioSeal)")
+    parser.add_argument("--formant", type=float, default=2.0, help="Formant shift in semitones (default: 2.0)")
+    parser.add_argument("--no-psycho", action="store_true", help="Disable psychoacoustic threshold masking")
     parser.add_argument("--slice", action="store_true", help="Slice audio into safe chunks for Suno Library upload")
     parser.add_argument("--slice-duration", type=float, default=22.0, help="Chunk duration in seconds for --slice (default: 22.0)")
+    parser.add_argument("--watch-input", help="Directory path to monitor with automatic Folder Watcher")
+    parser.add_argument("--watch-output", help="Directory path where sanitized tracks are saved by Folder Watcher")
+    parser.add_argument("--batch-dir", help="Directory containing audio tracks to batch sanitize")
     parser.add_argument("--lyrics", help="Path to text file containing lyrics to sanitize")
     parser.add_argument("--lyrics-out", help="Destination path for sanitized lyrics output file")
     parser.add_argument("--lyrics-mode", choices=["scramble", "hybrid", "phonetic", "semantic", "cloud"], default="scramble", help="Lyrics sanitization strategy (default: scramble)")
@@ -238,8 +249,51 @@ def main():
 
     args = parser.parse_args()
 
+    if args.watch_input and args.watch_output:
+        from ghostwave.batch_processor import FolderWatcher
+        vault = GhostWaveConfig.load(args.config_sn) if args.config_sn else GhostWaveConfig.load()
+        cli_opts = _build_cli_options(args, vault)
+        print(f"Starting Folder Watcher daemon on '{args.watch_input}' -> '{args.watch_output}'...")
+        watcher = FolderWatcher(
+            args.watch_input,
+            args.watch_output,
+            options=cli_opts,
+            audio_processor=AudioProcessor(),
+        )
+        watcher.start()
+        print("Folder Watcher is running in background. Press Ctrl+C to stop.")
+        try:
+            import time
+            while True:
+                time.sleep(1.0)
+        except KeyboardInterrupt:
+            watcher.stop()
+            print("Watcher stopped.")
+        sys.exit(0)
+
+    if args.batch_dir:
+        from ghostwave.batch_processor import BatchProcessor, BatchTask
+        vault = GhostWaveConfig.load(args.config_sn) if args.config_sn else GhostWaveConfig.load()
+        cli_opts = _build_cli_options(args, vault)
+        b_proc = BatchProcessor(AudioProcessor())
+        exts = {".wav", ".mp3", ".flac", ".m4a", ".ogg"}
+        out_ext = ".mp3" if args.format == "mp3" else ".wav"
+        out_dir = os.path.abspath(args.output) if args.output else None
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+        tasks = []
+        for e in sorted(os.scandir(args.batch_dir), key=lambda x: x.name.lower()):
+            if e.is_file() and os.path.splitext(e.name)[1].lower() in exts:
+                stem = os.path.splitext(e.name)[0] if out_dir else os.path.splitext(e.path)[0]
+                out_p = os.path.join(out_dir, f"{stem}_ghostwave_ready{out_ext}") if out_dir else f"{stem}_ghostwave_ready{out_ext}"
+                tasks.append(BatchTask(e.path, out_p))
+        print(f"Batch processing {len(tasks)} files in '{args.batch_dir}'...")
+        b_proc.process_queue(tasks, cli_opts, progress_callback=lambda idx, tot, pct, msg: print(f"[{idx+1}/{tot}] {pct}% - {msg}"))
+        print("Batch processing completed.")
+        sys.exit(0)
+
     if args.check_update:
-        from updater import check_for_updates
+        from ghostwave.updater import check_for_updates
         print(f"Checking for updates (current version: {APP_VERSION})...")
         info = check_for_updates()
         if info.has_update:

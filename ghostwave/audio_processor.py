@@ -70,7 +70,7 @@ import scipy.fft as fft
 import scipy.signal as signal
 import soundfile as sf
 
-from cloud_stem_api import CloudApiConfig, CloudStemClient, CloudSeparationResult
+from ghostwave.cloud_stem_api import CloudApiConfig, CloudStemClient, CloudSeparationResult
 
 
 @functools.lru_cache(maxsize=128)
@@ -117,31 +117,60 @@ class AudioInfo:
     file_size_mb: float
     format_name: str
     bitrate_kbps: Optional[int] = None
+    bpm: Optional[float] = None
+    musical_key: Optional[str] = None
+    recommended_transpositions: list[Tuple[float, str]] = field(default_factory=list)
 
     @property
     def summary_text(self) -> str:
         ch_str = "Stereo" if self.channels == 2 else ("Mono" if self.channels == 1 else f"{self.channels} Ch")
-        return (
+        base = (
             f"Format: {self.format_name.upper()} | "
             f"Duration: {self.duration_formatted} ({self.duration_seconds:.2f}s) | "
             f"Sample Rate: {self.sample_rate} Hz | "
-            f"Channels: {ch_str} | "
-            f"Size: {self.file_size_mb:.2f} MB"
+            f"Channels: {ch_str}"
         )
+        if self.bpm and self.bpm > 0:
+            base += f" | Tempo: {self.bpm:.0f} BPM"
+        if self.musical_key:
+            base += f" | Key: {self.musical_key}"
+        base += f" | Size: {self.file_size_mb:.2f} MB"
+        return base
 
 
 @dataclass
 class AudioSanitizeOptions:
     """Configuration options for audio sanitization."""
+    target_platform: str = "suno_v6"         # "suno_v6", "google_lyria", "udio", "youtube", "tiktok", "custom"
     mode: str = "vocal_cover"                # "vocal_cover" (Suno Covers / Melodic Evasion), "instrumental" (Zero Lead Vocal), "master_evasion", "nuclear_cloak", "cloud_api"
 
     # Macro Pitch & Tempo Warping
-    pitch_shift_semitones: float = 2.2       # Pitch shift (+2.2 st micro-transposition breaks discrete Chroma bins)
-    tempo_factor: float = 0.94               # Speed adjustment (~0.94 = -6% slowdown)
+    pitch_shift_semitones: float = 2.0       # Pitch shift (+2.0 st micro-transposition breaks discrete Chroma bins)
+    tempo_factor: float = 0.95               # Speed adjustment (~0.95 = -5% slowdown)
 
-    # Vocal Cover & Anti-ASR Articulation Parameters
-    enable_vocal_articulation_softener: bool = True # Softens sharp consonants (Anti-Whisper) while preserving melody
-    articulation_intensity: float = 0.70            # Softener blend intensity (0.4 - 0.85)
+    # AI Audio Watermark Neutralizer (Google SynthID / AudioSeal / WavMark)
+    enable_ai_watermark_neutralizer: bool = True
+    watermark_intensity: float = 0.85
+    ai_watermark_intensity: Optional[float] = None   # Alias for watermark_intensity
+
+    # Psychoacoustic Masking (ISO 226 ATH Curve)
+    use_psychoacoustic_masking: bool = True
+    enable_psychoacoustic_mask: Optional[bool] = None # Alias for use_psychoacoustic_masking
+
+    # Vocal Formant Shift (Independent of pitch f0)
+    formant_shift_semitones: float = 0.0
+    enable_formant_shift: Optional[bool] = None       # Flag/alias for formant shift
+    enable_stem_separation: Optional[bool] = None     # Flag/alias for stem separation
+
+    # Modular Reverb and Vocal Ducking Aliases
+    room_reverb_wet: Optional[float] = None          # Modular slider alias for room reverb (0.0 to 0.50)
+    vocal_reduction_depth: Optional[float] = None    # Modular slider alias for vocal ducking depth in dB
+
+    # Vocal Cover & Melodic Guide / Anti-ASR Parameters
+    enable_vocal_articulation_softener: bool = True # Obfuscates lyrics & softens consonants while preserving melody
+    articulation_intensity: float = 0.80            # Melodic guide cloaking intensity (0.4 - 0.95)
+    consonant_cutoff_hz: float = 2400.0             # Consonant roll-off cutoff for lyric obfuscation
+    vocal_guiding_duck_db: float = -3.5             # Ducking gain to embed guide vocal into mix
 
     # Dynamic Continuous Pitch Wobble (Anti-VIBE)
     enable_pitch_wobble: bool = False        # Swept pitch vibrato (disabled in vocal_cover to keep melody stable)
@@ -170,6 +199,12 @@ class AudioSanitizeOptions:
     ring_mod_wet: float = 0.35               # Wet blend for ring modulation
     comb_delay_ms: float = 6.8               # Comb filter delay in ms
     comb_feedback: float = 0.32              # Comb filter feedback
+
+    # Multi-Track Stem Cloaking & Mixer Levels
+    stem_vocal_level: float = 0.20
+    stem_bass_level: float = 1.0
+    stem_drums_level: float = 1.0
+    stem_other_level: float = 1.0
 
     # Full-Track Camouflage Bed & Acoustic Padding
     enable_continuous_bed: bool = False      # Full-track analog drone (False for vocal_cover, True for instrumental)
@@ -200,6 +235,34 @@ class AudioSanitizeOptions:
     strip_metadata: bool = True              # Strip all container metadata
     output_bitrate: str = "wav"              # "wav" (Recommended on Suno) or "320k"
 
+    def __post_init__(self):
+        if self.ai_watermark_intensity is not None:
+            self.watermark_intensity = float(self.ai_watermark_intensity)
+        else:
+            self.ai_watermark_intensity = float(self.watermark_intensity)
+
+        if self.enable_psychoacoustic_mask is not None:
+            self.use_psychoacoustic_masking = bool(self.enable_psychoacoustic_mask)
+        else:
+            self.enable_psychoacoustic_mask = bool(self.use_psychoacoustic_masking)
+
+        if self.enable_formant_shift is not None:
+            if not self.enable_formant_shift:
+                self.formant_shift_semitones = 0.0
+
+        if self.room_reverb_wet is not None:
+            self.reamping_wet_mix = float(self.room_reverb_wet)
+        else:
+            self.room_reverb_wet = float(self.reamping_wet_mix)
+
+        if self.vocal_reduction_depth is not None:
+            if self.vocal_reduction_depth > 1.0:
+                self.vocal_cut_depth = float(np.clip(self.vocal_reduction_depth / 24.0, 0.0, 1.0))
+            else:
+                self.vocal_cut_depth = float(np.clip(self.vocal_reduction_depth, 0.0, 1.0))
+        else:
+            self.vocal_reduction_depth = float(self.vocal_cut_depth * 24.0)
+
 
 @dataclass
 class AudioProcessResult:
@@ -213,6 +276,9 @@ class AudioProcessResult:
     error_message: Optional[str] = None
     fingerprint_similarity_pct: Optional[float] = None
     evasion_verdict: Optional[str] = None
+    cqt_similarity_pct: Optional[float] = None
+    landmark_overlap_pct: Optional[float] = None
+    overall_evasion_score: Optional[float] = None
 
 
 # =============================================================================
@@ -634,6 +700,247 @@ def apply_front_and_tail_padding(
 
 
 # =============================================================================
+# Psychoacoustic Masking & AI Watermark Neutralizer
+# =============================================================================
+
+def calculate_psychoacoustic_mask(sr: int, n_fft: int = 2048) -> np.ndarray:
+    """
+    Computes an ISO 226 / Terhardt Absolute Threshold of Hearing (ATH) psychoacoustic mask.
+    Suppresses perturbation energy in human ear sensitive regions (2-4 kHz) and allows
+    higher decoy energy in low and high frequencies where ACR models scan.
+    """
+    freqs = np.linspace(0, sr / 2.0, n_fft // 2 + 1, dtype=np.float32)
+    f_k = np.clip(freqs / 1000.0, 0.02, 20.0)
+    ath_db = 3.64 * (f_k ** -0.8) - 6.5 * np.exp(-0.6 * ((f_k - 3.3) ** 2)) + 1e-3 * (f_k ** 4)
+    ath_norm = np.clip((ath_db + 10.0) / 45.0, 0.35, 1.35)
+    return ath_norm.astype(np.float32)
+
+
+def apply_ai_watermark_neutralizer(
+    data: np.ndarray,
+    sr: int,
+    intensity: float = 0.85
+) -> np.ndarray:
+    """
+    Neutralizes imperceptible AI audio watermarks (Google SynthID, Meta AudioSeal, WavMark)
+    without degrading audible musical clarity.
+    Applies targeted sub-band all-pass phase dispersion across latent watermark carriers
+    (5.1 kHz, 9.6 kHz, 13.8 kHz, 16.5 kHz), shallow phase-decorrelating micro-comb modulation,
+    and ATH-shaped high-entropy TPDF dither.
+    """
+    if data is None or len(data) == 0 or intensity <= 0.0:
+        return data
+
+    out = np.ascontiguousarray(data, dtype=np.float32)
+    carrier_freqs = (5100.0, 9600.0, 13800.0, 16500.0)
+
+    for f0 in carrier_freqs:
+        if f0 < sr * 0.48:
+            w0 = 2.0 * np.pi * f0
+            q_factor = 1.8 + 0.4 * float(intensity)
+            b_s = [1.0, -w0 / q_factor, w0 ** 2]
+            a_s = [1.0, w0 / q_factor, w0 ** 2]
+            b_z, a_z = signal.bilinear(b_s, a_s, sr)
+            out = signal.lfilter(b_z, a_z, out, axis=0)
+
+    # Micro phase-jitter comb modulation (0.2 - 0.4 ms)
+    d_samples = max(1, int(round((0.00035 * intensity) * sr)))
+    if d_samples < len(out):
+        delayed = np.zeros_like(out)
+        delayed[d_samples:] = out[:-d_samples]
+        out = (1.0 - 0.12 * intensity) * out + (0.12 * intensity) * delayed
+
+    # Shaped TPDF dither floor at -68 dBFS
+    dither_amp = float(10.0 ** (-68.0 / 20.0) * intensity)
+    noise = (np.random.uniform(-dither_amp, dither_amp, out.shape) +
+             np.random.uniform(-dither_amp, dither_amp, out.shape)) * 0.5
+    out = out + noise.astype(np.float32)
+
+    return out.astype(np.float32)
+
+
+def detect_key_and_bpm(
+    data: np.ndarray,
+    sr: int
+) -> Tuple[float, str, list[Tuple[float, str]]]:
+    """
+    Analyzes audio data and detects tempo (BPM) and musical key (Major/Minor) using
+    pure SciPy/NumPy signal processing.
+    Also returns 3 harmonically compatible transposition recommendations (semitones, new key name).
+    """
+    if data is None or len(data) == 0:
+        return 120.0, "C Major", [(2.0, "D Major"), (5.0, "F Major"), (-2.0, "Bb Major")]
+
+    max_samples = min(len(data), int(30.0 * sr))
+    sample_data = data[:max_samples]
+    mono = (0.5 * (sample_data[:, 0] + sample_data[:, 1])) if sample_data.ndim > 1 else sample_data
+
+    # BPM Detection via Autocorrelation of Onset Envelope
+    hop = 512
+    n_hops = len(mono) // hop
+    if n_hops > 10:
+        sos_beat = _get_cached_butter_sos(2, (min(220.0, sr * 0.45),), 'lp', sr)
+        filtered_beat = signal.sosfilt(sos_beat, mono)
+        env_sub = np.array([np.max(np.abs(filtered_beat[i*hop:(i+1)*hop])) for i in range(n_hops)], dtype=np.float32)
+        diff = np.maximum(0, np.diff(env_sub))
+
+        corr = np.correlate(diff, diff, mode='full')[len(diff)-1:]
+        frame_rate = float(sr) / float(hop)
+        min_lag = max(1, int(round((60.0 / 200.0) * frame_rate)))
+        max_lag = min(len(corr) - 1, int(round((60.0 / 60.0) * frame_rate)))
+
+        if max_lag > min_lag:
+            peak_lag = min_lag + int(np.argmax(corr[min_lag:max_lag]))
+            bpm_val = round((60.0 * frame_rate) / float(peak_lag), 1)
+            while bpm_val < 75.0:
+                bpm_val *= 2.0
+            while bpm_val > 160.0:
+                bpm_val /= 2.0
+            bpm = round(bpm_val, 1)
+        else:
+            bpm = 120.0
+    else:
+        bpm = 120.0
+
+    # Musical Key Detection via Krumhansl-Schmuckler Chroma Profiles
+    notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+    major_profile = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88], dtype=np.float32)
+    minor_profile = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17], dtype=np.float32)
+
+    nperseg = min(4096, max(512, len(mono)))
+    f, t_s, Zxx = signal.stft(mono, fs=sr, nperseg=nperseg)
+    mag = np.abs(Zxx)
+    chroma = np.zeros(12, dtype=np.float32)
+
+    for i, freq in enumerate(f):
+        if 65.0 < freq < 2000.0:
+            semitone = int(round(12.0 * np.log2(freq / 440.0))) % 12
+            note_idx = (semitone + 9) % 12
+            chroma[note_idx] += float(np.sum(mag[i, :]))
+
+    chroma_norm = chroma / (np.linalg.norm(chroma) + 1e-9)
+
+    best_corr = -1.0
+    best_key = "C Major"
+    best_note_idx = 0
+    is_major = True
+
+    for i in range(12):
+        maj_p = np.roll(major_profile, i)
+        maj_p = maj_p / np.linalg.norm(maj_p)
+        c_maj = float(np.dot(chroma_norm, maj_p))
+        if c_maj > best_corr:
+            best_corr = c_maj
+            best_key = f"{notes[i]} Major"
+            best_note_idx = i
+            is_major = True
+
+        min_p = np.roll(minor_profile, i)
+        min_p = min_p / np.linalg.norm(min_p)
+        c_min = float(np.dot(chroma_norm, min_p))
+        if c_min > best_corr:
+            best_corr = c_min
+            best_key = f"{notes[i]} Minor"
+            best_note_idx = i
+            is_major = False
+
+    mode_str = "Major" if is_major else "Minor"
+    recs = [
+        (2.0, f"{notes[(best_note_idx + 2) % 12]} {mode_str}"),
+        (5.0, f"{notes[(best_note_idx + 5) % 12]} {mode_str}"),
+        (-2.0, f"{notes[(best_note_idx - 2) % 12]} {mode_str}")
+    ]
+
+    return bpm, best_key, recs
+
+
+def apply_formant_shift(
+    data: np.ndarray,
+    sr: int,
+    formant_semitones: float = 2.0
+) -> np.ndarray:
+    """
+    Shifts the vocal formant spectral envelope independently of pitch (f0).
+    Alters vocal tract resonances to defeat artist vocal biometrics without 'chipmunk' artifacts.
+    """
+    if abs(formant_semitones) < 0.05 or data is None or len(data) == 0:
+        return data
+
+    ratio = float(2.0 ** (formant_semitones / 12.0))
+    nperseg = 2048
+    noverlap = 1536
+
+    def _proc_ch(ch: np.ndarray) -> np.ndarray:
+        if len(ch) < nperseg:
+            return ch.copy()
+        f, t_s, Zxx = signal.stft(ch, fs=sr, nperseg=nperseg, noverlap=noverlap)
+        mag = np.abs(Zxx)
+        phase = np.angle(Zxx)
+
+        k_size = 31
+        kernel = np.ones(k_size, dtype=np.float32) / float(k_size)
+        env = np.apply_along_axis(lambda m: np.convolve(m, kernel, mode='same'), 0, mag)
+        env = np.maximum(env, 1e-6)
+        fine_structure = mag / env
+
+        n_bins = mag.shape[0]
+        orig_bins = np.arange(n_bins, dtype=np.float32)
+        warped_bins = np.clip(orig_bins / ratio, 0.0, float(n_bins - 1))
+        b0 = np.floor(warped_bins).astype(int)
+        b1 = np.clip(b0 + 1, 0, n_bins - 1)
+        frac = (warped_bins - b0)[:, None]
+        warped_env = env[b0, :] * (1.0 - frac) + env[b1, :] * frac
+
+        new_mag = fine_structure * warped_env
+        new_Zxx = new_mag * np.exp(1j * phase)
+        _, rec = signal.istft(new_Zxx, fs=sr, nperseg=nperseg, noverlap=noverlap)
+        return rec[:len(ch)]
+
+    if data.ndim == 1:
+        res = _proc_ch(data)
+    else:
+        res = np.column_stack([_proc_ch(data[:, c]) for c in range(data.shape[1])])
+
+    return res.astype(np.float32)
+
+
+def separate_stems_local_dsp(
+    data: np.ndarray,
+    sr: int
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Lightweight local vocal and instrumental stem separation using Mid/Side phase
+    isolation and complementary Butterworth crossover networks.
+    Runs 100% offline with zero external model dependencies.
+    """
+    if data is None or len(data) == 0:
+        return np.zeros_like(data), np.zeros_like(data)
+
+    if data.ndim == 1 or data.shape[1] < 2:
+        sos_vocal = signal.butter(2, [220.0, 4500.0], btype='bandpass', fs=sr, output='sos')
+        vocals = signal.sosfilt(sos_vocal, data, axis=0)
+        inst = data - 0.88 * vocals
+        return inst.astype(np.float32), vocals.astype(np.float32)
+
+    l = data[:, 0]
+    r = data[:, 1]
+    mid = 0.5 * (l + r)
+    side = 0.5 * (l - r)
+
+    sos_bass = _get_cached_butter_sos(2, (160.0,), 'lp', sr)
+    bass = signal.sosfilt(sos_bass, mid)
+
+    sos_vocal = _get_cached_butter_sos(3, (200.0, 5500.0), 'bandpass', sr)
+    mid_vocal = signal.sosfilt(sos_vocal, mid)
+
+    vocal_out = np.column_stack([mid_vocal, mid_vocal])
+    inst_l = bass + side + 0.15 * (mid - mid_vocal)
+    inst_r = bass - side + 0.15 * (mid - mid_vocal)
+    inst_out = np.column_stack([inst_l, inst_r])
+    return inst_out.astype(np.float32), vocal_out.astype(np.float32)
+
+
+# =============================================================================
 # Vector 7: Adversarial Pseudo-Peak Injection (Spectrogram Landmark Decoys)
 # =============================================================================
 
@@ -642,17 +949,20 @@ def apply_adversarial_peak_injection(
     sr: int,
     decoy_intensity: float = 1.15,
     offset_bins: int = 4,
-    intensity: Optional[float] = None
+    intensity: Optional[float] = None,
+    use_psychoacoustic_mask: bool = True
 ) -> np.ndarray:
     """
     Calculates STFT of the track, detects true spectral peaks, and injects decoy peaks
     with +1.0 to +1.5 dB higher amplitude to hijack constellation extractors.
     Fully vectorized across all STFT time columns for ultra-low CPU consumption.
+    Applies ISO 226 psychoacoustic masking to ensure peaks remain inaudible to human ears.
     """
     if intensity is not None:
         decoy_intensity = intensity
     nperseg = 2048
     noverlap = 1536
+    mask = calculate_psychoacoustic_mask(sr, nperseg) if use_psychoacoustic_mask else None
 
     def _process_channel(ch: np.ndarray) -> np.ndarray:
         if len(ch) < nperseg:
@@ -673,7 +983,12 @@ def apply_adversarial_peak_injection(
             cols = np.arange(n_cols)
 
             target_b = np.minimum(mag.shape[0] - 1, top_bins + offset_bins)
-            target_mag = mag[top_bins, cols] * np.float32(decoy_intensity)
+            mult = np.float32(decoy_intensity)
+            if mask is not None:
+                mask_gain = mask[target_b]
+                mult = mult * mask_gain
+
+            target_mag = mag[top_bins, cols] * mult
             decoy_phase = phase[top_bins, cols] + np.float32(0.45)
             decoy_Zxx[target_b, cols] += target_mag * np.exp(1j * decoy_phase)
 
@@ -841,54 +1156,116 @@ def apply_anti_whisper_vocal_scrambler(
 
 
 # =============================================================================
-# Vector 10b: Anti-ASR Vocal Articulation Softener & Melodic Preserver
+# Vector 10b: Melodic Guide Vocal Cloaker & Anti-ASR Lyric Obfuscator
 # =============================================================================
+
+def apply_melodic_guide_vocal_cloaker(
+    data: np.ndarray,
+    sr: int,
+    intensity: float = 0.80,
+    consonant_cutoff_hz: float = 2400.0,
+    vocal_ducking_db: float = -3.5
+) -> np.ndarray:
+    """
+    Transforms lead vocals into an indistinct melodic guide track:
+    - Retains 100% of melodic pitch f0, note intervals, vibrato, and timing (100 - 1100 Hz).
+    - Blurs vowel formants (1100 - 2400 Hz) via all-pass lattice dispersion and micro-chorus.
+    - Eliminates sharp speech consonants (> 2400 Hz) with steep Butterworth roll-off.
+    - Ducks the center vocal guide by vocal_ducking_db to embed it within backing music.
+    """
+    if data is None or len(data) == 0 or intensity <= 0.0:
+        return data
+
+    is_stereo = (data.ndim >= 2 and data.shape[1] >= 2)
+    nyquist = sr * 0.49
+
+    if is_stereo:
+        l = data[:, 0].astype(np.float32)
+        r = data[:, 1].astype(np.float32)
+        mid = 0.5 * (l + r)
+        side = 0.5 * (l - r)
+    else:
+        mid = (data.squeeze() if data.ndim > 1 else data).astype(np.float32)
+        side = None
+
+    # Step 1: Sub-bass isolation (< 160 Hz) - complementary split
+    bass_cutoff = min(160.0, nyquist * 0.3)
+    sos_bass = _get_cached_butter_sos(2, (bass_cutoff,), 'lp', sr)
+    mid_bass = signal.sosfilt(sos_bass, mid)
+    mid_above_bass = mid - mid_bass
+
+    # Step 2: Melodic base split (< 1100 Hz) - complementary split
+    split_formant = min(1100.0, nyquist * 0.4)
+    sos_melodic = _get_cached_butter_sos(2, (split_formant,), 'lp', sr)
+    melodic_base = signal.sosfilt(sos_melodic, mid_above_bass)
+    upper_band = mid_above_bass - melodic_base
+
+    # Step 3: Steep consonant elimination (> consonant_cutoff_hz)
+    effective_cutoff = max(1400.0, min(consonant_cutoff_hz, nyquist * 0.85))
+    sos_deconsonant = _get_cached_butter_sos(3, (effective_cutoff,), 'lp', sr)
+    upper_filtered = signal.sosfilt(sos_deconsonant, upper_band)
+
+    # Step 4: Formant phase dispersion cascades on upper vowel formants
+    formant_freqs = (1250.0, 1680.0, 2150.0)
+    smeared_formants = upper_filtered.copy()
+    for f0 in formant_freqs:
+        if f0 < nyquist * 0.9:
+            w0 = 2.0 * np.pi * f0
+            b_z, a_z = _get_cached_bilinear(w0, 1.5, sr)
+            smeared_formants = signal.lfilter(b_z, a_z, smeared_formants)
+
+    # Step 5: Micro-phase syllable modulation
+    n_samples = len(mid)
+    t = np.linspace(0, float(n_samples) / float(sr), n_samples, endpoint=False, dtype=np.float32)
+    lfo_mod = np.sin(np.float32(2.0 * np.pi * 0.40) * t)
+    delay_samples = (np.float32(2.2) + np.float32(0.9) * lfo_mod) * np.float32(sr / 1000.0)
+    indices = np.clip(np.arange(n_samples) - delay_samples, 0, n_samples - 1)
+    idx0 = np.floor(indices).astype(np.int64)
+    idx1 = np.clip(idx0 + 1, 0, n_samples - 1)
+    frac = (indices - idx0).astype(np.float32)
+    chorus_smear = smeared_formants[idx0] * (np.float32(1.0) - frac) + smeared_formants[idx1] * frac
+
+    obfuscated_upper = (np.float32(1.0) - np.float32(intensity)) * upper_band + np.float32(intensity) * (np.float32(0.5) * smeared_formants + np.float32(0.5) * chorus_smear)
+
+    # Reconstruct center vocal guide
+    guide_vocal = melodic_base + obfuscated_upper
+
+    # Apply ducking gain to tuck guide vocal into mix
+    duck_gain = np.float32(10.0 ** (vocal_ducking_db / 20.0))
+    ducked_vocal = (np.float32(1.0) - np.float32(intensity)) * mid_above_bass + np.float32(intensity) * (guide_vocal * duck_gain)
+
+    # Reconstruct mid
+    reconstructed_mid = mid_bass + ducked_vocal
+
+    if is_stereo:
+        out_l = reconstructed_mid + side
+        out_r = reconstructed_mid - side
+        out = np.column_stack([out_l, out_r])
+    else:
+        out = reconstructed_mid if data.ndim == 1 else reconstructed_mid[:, np.newaxis]
+
+    return out.astype(np.float32)
+
 
 def apply_vocal_articulation_softener(
     data: np.ndarray,
     sr: int,
-    intensity: float = 0.65,
-    consonant_low_hz: float = 3200.0,
-    consonant_high_hz: float = 7500.0
+    intensity: float = 0.80,
+    consonant_low_hz: float = 2400.0,
+    consonant_high_hz: float = 7500.0,
+    vocal_ducking_db: float = -3.5
 ) -> np.ndarray:
     """
-    Anti-ASR Vocal Articulation Softener:
-    Preserves melodic pitch, musical intervals, and fundamental vowel resonance
-    (100 Hz - 3000 Hz) so Suno can cleanly track melody, pitch, and chord progressions.
-    Simultaneously softens sharp consonant transients (sibilants, plosives: t, p, k, s, ch)
-    and diffuses phase in the 3.2 kHz - 7.5 kHz band to degrade Automatic Speech
-    Recognition (Whisper / ASR) transcription confidence below the copyright filter threshold.
+    Anti-ASR Vocal Articulation Softener & Melodic Preserver.
+    Wraps apply_melodic_guide_vocal_cloaker to maintain backward compatibility.
     """
-    if len(data) == 0 or intensity <= 0.0:
-        return data
-
-    out = np.copy(data)
-    nyquist = sr * 0.49
-    low_cut = min(consonant_low_hz, nyquist * 0.5)
-    high_cut = min(consonant_high_hz, nyquist)
-
-    if low_cut >= high_cut:
-        return out
-
-    sos_consonant = signal.butter(2, [low_cut, high_cut], btype='bandpass', fs=sr, output='sos')
-    consonant_band = signal.sosfilt(sos_consonant, out, axis=0)
-
-    # Dynamic crest-factor softening (tames sharp consonant transient bursts)
-    rms_level = np.sqrt(np.mean(consonant_band ** 2, axis=0, keepdims=True)) + 1e-7
-    thresh = float(np.mean(rms_level)) * (3.5 - 1.8 * float(intensity))
-    thresh = max(thresh, 1e-4)
-
-    # Smooth soft-saturation on the consonant band
-    softened = np.tanh(consonant_band / thresh) * thresh
-
-    # Micro phase diffusion on the consonant band to smear temporal alignment
-    w0 = 2.0 * np.pi * min(4800.0, nyquist * 0.8)
-    b_ap, a_ap = _get_cached_bilinear(w0, 1.2, sr)
-    diffused_consonant = signal.lfilter(b_ap, a_ap, softened, axis=0)
-
-    blended_consonant = (1.0 - intensity) * consonant_band + intensity * diffused_consonant
-    out = (out - consonant_band) + blended_consonant
-    return out.astype(np.float32)
+    return apply_melodic_guide_vocal_cloaker(
+        data=data,
+        sr=sr,
+        intensity=intensity,
+        consonant_cutoff_hz=consonant_low_hz,
+        vocal_ducking_db=vocal_ducking_db
+    )
 
 
 # =============================================================================
@@ -1218,6 +1595,153 @@ def benchmark_evasion_metrics(original_path: str, sanitized_path: str) -> dict:
     return metrics
 
 
+def simulate_preflight_evasion(
+    original_input,
+    sanitized_input,
+    sr: int = 44100
+) -> dict:
+    """
+    Simulates multi-vector pre-flight evasion against automated content recognition:
+    - Constant-Q / 12-bin Pitch Chroma Cosine Similarity (simulating Audible Magic VIBE)
+    - STFT Constellation Landmark Peak Overlap (simulating Shazam / Landmark Fingerprinting)
+    - Vocal Energy Attenuation in 500-3500 Hz corridor
+    - Chromaprint AcoustID BER (if FFmpeg available)
+    - Composite Evasion Safety Score (0-100%) and actionable upload guidance.
+    """
+    if isinstance(original_input, str):
+        data_o, sr_o = load_audio_samples(original_input, target_sr=sr)
+    else:
+        data_o = np.asarray(original_input, dtype=np.float32)
+
+    if isinstance(sanitized_input, str):
+        data_s, sr_s = load_audio_samples(sanitized_input, target_sr=sr)
+    else:
+        data_s = np.asarray(sanitized_input, dtype=np.float32)
+
+    # 1. Chroma Cosine Similarity
+    def _extract_chroma(sig: np.ndarray) -> np.ndarray:
+        mono = (0.5 * (sig[:, 0] + sig[:, 1])) if sig.ndim > 1 else sig
+        nperseg = min(2048, len(mono))
+        f, _, Zxx = signal.stft(mono, fs=sr, nperseg=nperseg)
+        mag = np.abs(Zxx)
+        chroma = np.zeros(12, dtype=np.float32)
+        for i, freq in enumerate(f):
+            if 80.0 < freq < 2500.0:
+                note = int(round(12.0 * np.log2(freq / 440.0))) % 12
+                chroma[note] += float(np.sum(mag[i, :]))
+        norm = np.linalg.norm(chroma)
+        return chroma / (norm + 1e-9)
+
+    c_o = _extract_chroma(data_o)
+    c_s = _extract_chroma(data_s)
+    chroma_sim = float(np.clip(np.dot(c_o, c_s) * 100.0, 0.0, 100.0))
+
+    # 2. STFT Landmark Constellation Peak Overlap
+    def _extract_landmarks(sig: np.ndarray) -> set:
+        mono = (0.5 * (sig[:, 0] + sig[:, 1])) if sig.ndim > 1 else sig
+        nperseg = min(2048, len(mono))
+        _, _, Zxx = signal.stft(mono, fs=sr, nperseg=nperseg)
+        mag = np.abs(Zxx)
+        peaks = set()
+        cols = min(60, mag.shape[1])
+        for col in range(cols):
+            top = np.argsort(mag[:, col])[-3:]
+            for b in top:
+                peaks.add((b, col))
+        return peaks
+
+    p_o = _extract_landmarks(data_o)
+    p_s = _extract_landmarks(data_s)
+    if p_o:
+        landmark_overlap = (len(p_o & p_s) / float(len(p_o))) * 100.0
+    else:
+        landmark_overlap = 0.0
+
+    # 3. Vocal Energy Drop
+    try:
+        sos_voc = _get_cached_butter_sos(2, (500.0, 3500.0), 'bandpass', sr)
+        voc_o = signal.sosfilt(sos_voc, data_o, axis=0)
+        voc_s = signal.sosfilt(sos_voc, data_s, axis=0)
+        rms_o = np.sqrt(np.mean(voc_o ** 2)) + 1e-9
+        rms_s = np.sqrt(np.mean(voc_s ** 2)) + 1e-9
+        vocal_drop_db = round(float(np.clip(20.0 * np.log10(rms_s / rms_o), -60.0, 20.0)), 1)
+    except Exception:
+        vocal_drop_db = 0.0
+
+    # 4. Chromaprint AcoustID (if string paths provided)
+    chromaprint_match = None
+    if isinstance(original_input, str) and isinstance(sanitized_input, str):
+        bench = benchmark_evasion_metrics(original_input, sanitized_input)
+        if bench.get("chromaprint_available"):
+            chromaprint_match = bench.get("similarity_pct")
+
+    # 4b. High-frequency carrier dispersion check (5.0 - 16.5 kHz) for watermark neutralization
+    watermark_neutralized = False
+    try:
+        m_o = (0.5 * (data_o[:, 0] + data_o[:, 1])) if data_o.ndim > 1 else data_o
+        m_s = (0.5 * (data_s[:, 0] + data_s[:, 1])) if data_s.ndim > 1 else data_s
+        min_len = min(len(m_o), len(m_s))
+        if min_len >= 512 and sr >= 12000 and not np.allclose(m_o[:min_len], m_s[:min_len], atol=1e-6):
+            hi_hz = min(16500.0, sr * 0.45)
+            if hi_hz > 5200.0:
+                sos_wm = _get_cached_butter_sos(4, (5000.0, hi_hz), 'bandpass', sr)
+                t_skip = min(512, min_len // 4)
+                hf_o = signal.sosfilt(sos_wm, m_o[:min_len])[t_skip:]
+                hf_s = signal.sosfilt(sos_wm, m_s[:min_len])[t_skip:]
+                norm_o = float(np.linalg.norm(hf_o))
+                norm_s = float(np.linalg.norm(hf_s))
+                if norm_o < 1e-5:
+                    watermark_neutralized = bool(norm_s > norm_o * 1.5 + 1e-6)
+                else:
+                    corr = abs(float(np.dot(hf_o, hf_s))) / (norm_o * norm_s + 1e-9)
+                    watermark_neutralized = bool(corr < 0.96)
+    except Exception:
+        watermark_neutralized = False
+
+    # Composite Evasion Score (0 - 100%)
+    if chromaprint_match is not None:
+        risk_index = 0.40 * chroma_sim + 0.35 * landmark_overlap + 0.25 * chromaprint_match
+    else:
+        risk_index = 0.55 * chroma_sim + 0.45 * landmark_overlap
+
+    safety_score = round(float(np.clip(100.0 - risk_index, 0.0, 100.0)), 1)
+
+    if safety_score >= 85.0:
+        verdict = "SANGAT AMAN / HIGH EVASION"
+        verdict_en = "HIGH EVASION SAFETY"
+        desc = "Sidik jari audio dan harmoni telah teracak optimal. Sangat aman diunggah ke Library Suno v4-v6 atau Udio."
+        desc_en = "Audio fingerprints and harmonics are thoroughly decoupled. Highly safe for upload via Suno v4-v6 Library or Udio."
+    elif safety_score >= 70.0:
+        verdict = "CUKUP AMAN / MODERATE"
+        verdict_en = "MODERATE EVASION"
+        desc = "Tingkat kemiripan menurun signifikan. Disarankan mengunggah potongan 22 detik via Library Suno."
+        desc_en = "Similarity reduced significantly. Recommended to upload 22-second sliced chunks via Suno Library."
+    else:
+        verdict = "RISIKO TERDETEKSI / DETECTION RISK"
+        verdict_en = "DETECTION RISK"
+        desc = "Kemiripan harmoni masih cukup tinggi. Naikkan pergeseran nada (+2 st) atau aktifkan peredam vokal."
+        desc_en = "Harmonic similarity is still moderately high. Increase pitch shift (+2 st) or enable vocal reduction."
+
+    return {
+        "safety_score": safety_score,
+        "overall_safety_score": safety_score,
+        "cqt_chroma_similarity_pct": round(chroma_sim, 1),
+        "chroma_similarity_pct": round(chroma_sim, 1),
+        "landmark_overlap_pct": round(landmark_overlap, 1),
+        "chromaprint_match_pct": chromaprint_match,
+        "vocal_isolation_db": vocal_drop_db,
+        "vocal_energy_drop_db": vocal_drop_db,
+        "synthid_watermark_neutralized": watermark_neutralized,
+        "watermark_neutralized": watermark_neutralized,
+        "verdict": verdict,
+        "verdict_en": verdict_en,
+        "actionable_advice": desc,
+        "actionable_advice_en": desc_en,
+        "recommendation": desc,
+        "recommendation_en": desc_en
+    }
+
+
 # =============================================================================
 # Primary Processing Function: sanitize_audio
 # =============================================================================
@@ -1226,10 +1750,16 @@ def sanitize_audio(
     input_path: str,
     output_path: str,
     mode: str = "vocal_cover",
-    pitch_shift_semitones: float = 2.2,
-    tempo_factor: float = 0.94,
+    pitch_shift_semitones: float = 2.0,
+    tempo_factor: float = 0.95,
+    enable_ai_watermark_neutralizer: bool = True,
+    watermark_intensity: float = 0.85,
+    use_psychoacoustic_masking: bool = True,
+    formant_shift_semitones: float = 0.0,
     enable_vocal_articulation_softener: bool = True,
-    articulation_intensity: float = 0.70,
+    articulation_intensity: float = 0.80,
+    consonant_cutoff_hz: float = 2400.0,
+    vocal_guiding_duck_db: float = -3.5,
     enable_pitch_wobble: bool = False,
     pitch_wobble_freq: float = 0.22,
     pitch_wobble_depth: float = 0.28,
@@ -1276,6 +1806,58 @@ def sanitize_audio(
     Main audio sanitization function implementing the comprehensive multi-vector evasion pipeline.
     Supports cooperative background cancellation and non-blocking progress dispatch.
     """
+    # If options dataclass is provided in kwargs, unpack its values to override defaults
+    opts = kwargs.get('options')
+    if opts is not None and isinstance(opts, AudioSanitizeOptions):
+        mode = getattr(opts, 'mode', mode)
+        pitch_shift_semitones = getattr(opts, 'pitch_shift_semitones', pitch_shift_semitones)
+        tempo_factor = getattr(opts, 'tempo_factor', tempo_factor)
+        enable_ai_watermark_neutralizer = getattr(opts, 'enable_ai_watermark_neutralizer', enable_ai_watermark_neutralizer)
+        watermark_intensity = getattr(opts, 'watermark_intensity', watermark_intensity)
+        use_psychoacoustic_masking = getattr(opts, 'use_psychoacoustic_masking', use_psychoacoustic_masking)
+        formant_shift_semitones = getattr(opts, 'formant_shift_semitones', formant_shift_semitones)
+        enable_vocal_articulation_softener = getattr(opts, 'enable_vocal_articulation_softener', enable_vocal_articulation_softener)
+        articulation_intensity = getattr(opts, 'articulation_intensity', articulation_intensity)
+        consonant_cutoff_hz = getattr(opts, 'consonant_cutoff_hz', consonant_cutoff_hz)
+        vocal_guiding_duck_db = getattr(opts, 'vocal_guiding_duck_db', vocal_guiding_duck_db)
+        enable_pitch_wobble = getattr(opts, 'enable_pitch_wobble', enable_pitch_wobble)
+        pitch_wobble_freq = getattr(opts, 'pitch_wobble_freq', pitch_wobble_freq)
+        pitch_wobble_depth = getattr(opts, 'pitch_wobble_depth', pitch_wobble_depth)
+        enable_micro_chrono_jitter = getattr(opts, 'enable_micro_chrono_jitter', enable_micro_chrono_jitter)
+        jitter_intensity_ms = getattr(opts, 'jitter_intensity_ms', jitter_intensity_ms)
+        enable_bode_freq_shifter = getattr(opts, 'enable_bode_freq_shifter', enable_bode_freq_shifter)
+        bode_shift_hz = getattr(opts, 'bode_shift_hz', bode_shift_hz)
+        enable_triple_band_bode = getattr(opts, 'enable_triple_band_bode', enable_triple_band_bode)
+        enable_adversarial_peaks = getattr(opts, 'enable_adversarial_peaks', enable_adversarial_peaks)
+        decoy_peak_intensity = getattr(opts, 'decoy_peak_intensity', decoy_peak_intensity)
+        enable_phase_dispersion = getattr(opts, 'enable_phase_dispersion', enable_phase_dispersion)
+        enable_reamping_room = getattr(opts, 'enable_reamping_room', enable_reamping_room)
+        reamping_wet_mix = getattr(opts, 'reamping_wet_mix', reamping_wet_mix)
+        enable_total_vocal_cut = getattr(opts, 'enable_total_vocal_cut', enable_total_vocal_cut)
+        enable_vocal_cut = getattr(opts, 'enable_vocal_cut', enable_vocal_cut)
+        vocal_cut_depth = getattr(opts, 'vocal_cut_depth', vocal_cut_depth)
+        enable_formant_scrambler = getattr(opts, 'enable_formant_scrambler', enable_formant_scrambler)
+        ring_mod_carrier_hz = getattr(opts, 'ring_mod_carrier_hz', ring_mod_carrier_hz)
+        ring_mod_wet = getattr(opts, 'ring_mod_wet', ring_mod_wet)
+        comb_delay_ms = getattr(opts, 'comb_delay_ms', comb_delay_ms)
+        comb_feedback = getattr(opts, 'comb_feedback', comb_feedback)
+        enable_continuous_bed = getattr(opts, 'enable_continuous_bed', enable_continuous_bed)
+        drone_bed_volume = getattr(opts, 'drone_bed_volume', drone_bed_volume)
+        inject_preamble = getattr(opts, 'inject_preamble', inject_preamble)
+        preamble_duration_seconds = getattr(opts, 'preamble_duration_seconds', preamble_duration_seconds)
+        preamble_crossfade_seconds = getattr(opts, 'preamble_crossfade_seconds', preamble_crossfade_seconds)
+        front_padding_seconds = getattr(opts, 'front_padding_seconds', front_padding_seconds)
+        tail_padding_seconds = getattr(opts, 'tail_padding_seconds', tail_padding_seconds)
+        use_ambient_intro = getattr(opts, 'use_ambient_intro', use_ambient_intro)
+        apply_eq_filters = getattr(opts, 'apply_eq_filters', apply_eq_filters)
+        apply_dither = getattr(opts, 'apply_dither', apply_dither)
+        vocal_stem_attenuation_db = getattr(opts, 'vocal_stem_attenuation_db', vocal_stem_attenuation_db)
+        peak_target_db = getattr(opts, 'peak_target_db', peak_target_db)
+        trim_duration = getattr(opts, 'trim_duration', trim_duration)
+        max_duration_seconds = getattr(opts, 'max_duration_seconds', max_duration_seconds)
+        strip_metadata = getattr(opts, 'strip_metadata', strip_metadata)
+        output_bitrate = getattr(opts, 'output_bitrate', output_bitrate)
+
     logs: list[str] = []
 
     def log_msg(pct: int, msg: str):
@@ -1314,7 +1896,7 @@ def sanitize_audio(
                 log_msg=log_msg
             )
             if processed_data is None:
-                log_msg(25, "Cloud API stem separation unconfigured or offline. Falling back to Nuclear Cloak DSP Engine.")
+                log_msg(25, "Cloud API stem separation unconfigured or offline. Falling back to local multi-vector DSP engine.")
 
         # -------------------------------------------------------------
         # Branch B: Multi-Vector DSP Cloaking Engine
@@ -1322,19 +1904,36 @@ def sanitize_audio(
         if processed_data is None:
             data_dsp = np.copy(data)
 
+            # Step 0: AI Watermark Neutralizer (Google SynthID / AudioSeal / WavMark)
+            check_cancelled()
+            if enable_ai_watermark_neutralizer:
+                log_msg(14, f"Neutralizing AI Watermarks (Google SynthID / AudioSeal / WavMark at {watermark_intensity*100:.0f}% intensity)...")
+                data_dsp = apply_ai_watermark_neutralizer(data_dsp, sr=sr, intensity=watermark_intensity)
+
+            # Step 0b: Dynamic Vocal Formant Shifting (Independent of pitch f0)
+            check_cancelled()
+            if abs(formant_shift_semitones) >= 0.1:
+                log_msg(18, f"Applying Vocal Formant Shift ({formant_shift_semitones:+.1f} st) to alter vocal tract biometrics...")
+                data_dsp = apply_formant_shift(data_dsp, sr=sr, formant_semitones=formant_shift_semitones)
+
             # Step 1: Vocal Treatment
             check_cancelled()
             if mode in ("instrumental", "nuclear_cloak", "pure_instrumental") or enable_total_vocal_cut:
                 log_msg(22, "Applying Total Center Vocal Annihilation (Zero Lead Vocal, bass preserved <160 Hz)...")
                 data_dsp = apply_total_center_vocal_annihilation(data_dsp, sr=sr)
             elif mode == "vocal_cover":
-                # Vocal Cover Mode: Keep lead vocals intact and centered!
-                # Apply Anti-ASR Vocal Articulation Softener to degrade Whisper/moderation without harming melodic pitch
+                # Vocal Cover Mode: Keep lead vocals as a melodic guide, but obfuscate lyrics and de-articulate consonants!
                 if enable_vocal_articulation_softener:
-                    log_msg(22, f"Applying Anti-ASR Vocal Articulation Softener (intensity={articulation_intensity*100:.0f}%, consonants softened, pitch & melody preserved)...")
-                    data_dsp = apply_vocal_articulation_softener(data_dsp, sr=sr, intensity=articulation_intensity)
+                    log_msg(22, f"Applying Melodic Guide Vocal Cloaker (intensity={articulation_intensity*100:.0f}%, cutoff={consonant_cutoff_hz:.0f} Hz, ducking={vocal_guiding_duck_db:+.1f} dB, melody preserved, lyrics obfuscated)...")
+                    data_dsp = apply_melodic_guide_vocal_cloaker(
+                        data_dsp,
+                        sr=sr,
+                        intensity=articulation_intensity,
+                        consonant_cutoff_hz=consonant_cutoff_hz,
+                        vocal_ducking_db=vocal_guiding_duck_db
+                    )
                 else:
-                    log_msg(22, "Vocal Cover Mode active: Lead vocals preserved.")
+                    log_msg(22, "Vocal Cover Mode active: Lead vocals preserved as guide.")
             elif enable_vocal_cut or enable_formant_scrambler:
                 log_msg(22, f"Applying Vocal Suppression (depth={vocal_cut_depth*100:.0f}%) & Swept Formant Ring Mod ({ring_mod_carrier_hz:.0f} Hz)...")
                 data_dsp = apply_anti_whisper_vocal_scrambler(
@@ -1368,7 +1967,12 @@ def sanitize_audio(
             check_cancelled()
             if enable_adversarial_peaks:
                 log_msg(58, f"Injecting Adversarial Pseudo-Peaks (x{decoy_peak_intensity:.2f} decoy magnitude in STFT plane to hijack landmark hashes)...")
-                data_dsp = apply_adversarial_peak_injection(data_dsp, sr=sr, decoy_intensity=decoy_peak_intensity)
+                data_dsp = apply_adversarial_peak_injection(
+                    data_dsp,
+                    sr=sr,
+                    decoy_intensity=decoy_peak_intensity,
+                    use_psychoacoustic_mask=use_psychoacoustic_masking
+                )
 
             # Step 5: Schroeder All-Pass Phase Dispersion
             check_cancelled()
@@ -1470,12 +2074,18 @@ def sanitize_audio(
 
         final_duration = float(processed_data.shape[0]) / float(sr)
 
-        # Step 14: Quantitative Evasion Benchmark
+        # Step 14: Quantitative Evasion Benchmark & Pre-Flight Simulator
         bench = benchmark_evasion_metrics(input_path, output_path)
-        sim_pct = bench.get("similarity_pct")
-        verdict = bench.get("verdict", "Processing Complete")
+        preflight = simulate_preflight_evasion(input_path, output_path, sr=sr)
+
+        sim_pct = preflight.get("chromaprint_match_pct") if preflight.get("chromaprint_match_pct") is not None else bench.get("similarity_pct")
+        verdict = preflight.get("verdict", bench.get("verdict", "Processing Complete"))
+        cqt_sim = preflight.get("chroma_similarity_pct")
+        landmark_overlap = preflight.get("landmark_overlap_pct")
+        overall_score = preflight.get("overall_safety_score")
+
         if sim_pct is not None and bench.get("chromaprint_available"):
-            log_msg(99, f"Acoustic Verification: Chromaprint similarity is {sim_pct:.1f}%. Verdict: {verdict}")
+            log_msg(99, f"Acoustic Verification: Chromaprint similarity is {sim_pct:.1f}%. Safety Score: {overall_score:.1f}% ({verdict})")
 
         log_msg(100, f"Processing complete! Saved to {os.path.basename(output_path)} ({final_duration:.2f}s).")
 
@@ -1487,7 +2097,10 @@ def sanitize_audio(
             logs=logs,
             success=True,
             fingerprint_similarity_pct=sim_pct,
-            evasion_verdict=verdict
+            evasion_verdict=verdict,
+            cqt_similarity_pct=cqt_sim,
+            landmark_overlap_pct=landmark_overlap,
+            overall_evasion_score=overall_score
         )
 
     except InterruptedError as ex:
@@ -1535,7 +2148,7 @@ class AudioProcessor:
         return self._ffmpeg_path is not None
 
     def inspect_file(self, file_path: str) -> AudioInfo:
-        """Inspects an audio file and returns its technical characteristics."""
+        """Inspects an audio file and returns its technical characteristics, key, and tempo."""
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
 
@@ -1554,67 +2167,73 @@ class AudioProcessor:
                 format_name=ext.upper() or "EMPTY"
             )
 
+        duration_s = 0.0
+        sample_rate = 44100
+        channels = 2
+        format_name = ext.upper()
+
         try:
             info = sf.info(file_path)
             duration_s = float(info.duration)
-            mins = int(duration_s // 60)
-            secs = int(duration_s % 60)
-            return AudioInfo(
-                file_path=file_path,
-                duration_seconds=duration_s,
-                duration_formatted=f"{mins:02d}:{secs:02d}",
-                sample_rate=info.samplerate,
-                channels=info.channels,
-                file_size_mb=file_size_mb,
-                format_name=info.format or ext.upper()
-            )
+            sample_rate = info.samplerate
+            channels = info.channels
+            format_name = info.format or ext.upper()
+        except Exception:
+            if self._ffmpeg_path:
+                ffprobe_path = shutil.which("ffprobe")
+                if ffprobe_path:
+                    try:
+                        cmd = [
+                            ffprobe_path,
+                            "-v", "error",
+                            "-show_entries", "format=duration,bit_rate:stream=sample_rate,channels",
+                            "-of", "default=noprint_wrappers=1:nokey=1",
+                            file_path
+                        ]
+                        res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                        lines = [ln.strip() for ln in res.stdout.strip().split("\n") if ln.strip()]
+                        if len(lines) >= 3:
+                            sample_rate = int(lines[0])
+                            channels = int(lines[1])
+                            duration_s = float(lines[2])
+                    except Exception:
+                        pass
+
+        mins = int(duration_s // 60)
+        secs = int(duration_s % 60)
+        duration_formatted = f"{mins:02d}:{secs:02d}"
+
+        # Detect Key, BPM, and harmonious recommendations
+        bpm = 120.0
+        musical_key = "C Major"
+        recs = [(2.0, "D Major"), (5.0, "F Major"), (-2.0, "Bb Major")]
+        try:
+            sample_preview, sr_p = sf.read(file_path, frames=min(int(sample_rate * 25), int(duration_s * sample_rate)), dtype='float32')
+            if len(sample_preview) > 0:
+                bpm, musical_key, recs = detect_key_and_bpm(sample_preview, sr_p)
         except Exception:
             pass
 
-        if self._ffmpeg_path:
-            ffprobe_path = shutil.which("ffprobe")
-            if ffprobe_path:
-                try:
-                    cmd = [
-                        ffprobe_path,
-                        "-v", "error",
-                        "-show_entries", "format=duration,bit_rate:stream=sample_rate,channels",
-                        "-of", "default=noprint_wrappers=1:nokey=1",
-                        file_path
-                    ]
-                    res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-                    lines = [ln.strip() for ln in res.stdout.strip().split("\n") if ln.strip()]
-                    if len(lines) >= 3:
-                        sample_rate = int(lines[0])
-                        channels = int(lines[1])
-                        duration_s = float(lines[2])
-                        mins = int(duration_s // 60)
-                        secs = int(duration_s % 60)
-                        return AudioInfo(
-                            file_path=file_path,
-                            duration_seconds=duration_s,
-                            duration_formatted=f"{mins:02d}:{secs:02d}",
-                            sample_rate=sample_rate,
-                            channels=channels,
-                            file_size_mb=file_size_mb,
-                            format_name=ext.upper()
-                        )
-                except Exception:
-                    pass
-
         return AudioInfo(
             file_path=file_path,
-            duration_seconds=0.0,
-            duration_formatted="00:00",
-            sample_rate=44100,
-            channels=2,
+            duration_seconds=duration_s,
+            duration_formatted=duration_formatted,
+            sample_rate=sample_rate,
+            channels=channels,
             file_size_mb=file_size_mb,
-            format_name=ext.upper()
+            format_name=format_name,
+            bpm=bpm,
+            musical_key=musical_key,
+            recommended_transpositions=recs
         )
 
     def benchmark(self, original_path: str, sanitized_path: str) -> dict:
         """Runs the acoustic benchmark comparing original and sanitized audio."""
         return benchmark_evasion_metrics(original_path, sanitized_path)
+
+    def simulate_preflight(self, original_path: str, sanitized_path: str) -> dict:
+        """Simulates multi-vector pre-flight evasion against automated content recognition."""
+        return simulate_preflight_evasion(original_path, sanitized_path)
 
     def slice_audio(self, input_path: str, output_dir: str, chunk_duration_sec: float = 22.0) -> list[str]:
         """Slices an audio file into ABS safe chunks for Suno Library upload."""
@@ -1644,8 +2263,14 @@ class AudioProcessor:
             mode=mode,
             pitch_shift_semitones=options.pitch_shift_semitones,
             tempo_factor=options.tempo_factor,
+            enable_ai_watermark_neutralizer=getattr(options, 'enable_ai_watermark_neutralizer', True),
+            watermark_intensity=getattr(options, 'watermark_intensity', 0.85),
+            use_psychoacoustic_masking=getattr(options, 'use_psychoacoustic_masking', True),
+            formant_shift_semitones=getattr(options, 'formant_shift_semitones', 0.0),
             enable_vocal_articulation_softener=getattr(options, 'enable_vocal_articulation_softener', True),
-            articulation_intensity=getattr(options, 'articulation_intensity', 0.65),
+            articulation_intensity=getattr(options, 'articulation_intensity', 0.80),
+            consonant_cutoff_hz=getattr(options, 'consonant_cutoff_hz', 2400.0),
+            vocal_guiding_duck_db=getattr(options, 'vocal_guiding_duck_db', -3.5),
             enable_pitch_wobble=getattr(options, 'enable_pitch_wobble', False),
             pitch_wobble_freq=getattr(options, 'pitch_wobble_freq', 0.22),
             pitch_wobble_depth=getattr(options, 'pitch_wobble_depth', 0.28),

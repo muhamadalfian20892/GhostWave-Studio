@@ -1,336 +1,144 @@
-# GhostWave Studio v1.2.0: Stealth Audio Cloak and Fingerprint Evasion
+# GhostWave Studio
 
-GhostWave Studio is an accessibility-focused desktop application and command-line tool written in Python using wxPython Phoenix, SciPy, FFmpeg, and cryptography. I put this together to study how automated audio fingerprinting systems, specifically Audible Magic ACR, VIBE neural embeddings, and Whisper speech recognition, inspect audio uploads on platforms like Suno.
+[![CI](https://github.com/muhamadalfian20892/GhostWave-Studio/actions/workflows/ci.yml/badge.svg)](https://github.com/muhamadalfian20892/GhostWave-Studio/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![Version](https://img.shields.io/badge/Version-1.7.0-046C4E)
 
-The project implements digital signal processing techniques designed to disrupt landmark peak hashes and neural chroma representations while keeping the audio usable for prompting or continuation. All user preferences, remote API tokens, DSP parameters, and custom blacklists are stored inside an encrypted .sn binary container file so secrets stay protected locally. Audio processing runs through local DSP algorithms or optional remote cloud APIs for stem isolation, which avoids downloading multi-gigabyte PyTorch checkpoints to the local machine.
+GhostWave Studio is a screen-reader-first desktop application and CLI tool for audio signal processing, acoustic fingerprint testing, and lyrics preparation. Built in Python with wxPython Phoenix, SciPy, NumPy, soundfile, sounddevice, FFmpeg, and cryptography, it runs completely offline for local DSP while keeping optional cloud stem separation and lyrics rewriting behind remote APIs so users never have to download multi-gigabyte PyTorch weights.
 
----
+I built GhostWave Studio so blind, low-vision, and sighted musicians can inspect how automated content recognition systems (Audible Magic, CQT chroma embeddings, neural audio watermarks, and Whisper speech filters) evaluate uploaded tracks, test countermeasures quantitatively, and prepare vocal covers or backing tracks without fighting inaccessible web tools.
 
-### Installation and Distribution Options
+## Why Accessibility Comes First
 
-GhostWave Studio is available as a compiled Windows installer, a portable zip archive, or directly from source.
+Most audio workstations and AI music utilities depend heavily on unlabeled canvas widgets, mouse-only sliders, and visual meters with no text fallback. GhostWave Studio treats accessibility as a primary engineering requirement:
 
-#### Option 1: Windows Installer (Recommended)
-Run the setup wizard located at:
-`dist/installer/GhostWaveStudio-v1.2.0-Setup.exe`
-- Installs to the user application directory
-- Creates Desktop and Start Menu shortcuts
-- Provides an optional checkbox to add `ghostwave-cli` to your user PATH
-- Includes an uninstaller in Windows Settings and Control Panel
+- Native MSAA/IAccessible labels via `wx.Accessible` on every input field, compound `SpinCtrlDouble`, checkbox, choice box, and button so NVDA, JAWS, and Windows Narrator announce exact control names in English or Bahasa Indonesia.
+- Real-time bilingual UI switching (`English` and `Bahasa Indonesia`) stored in an encrypted local `.sn` vault and applied without restarting.
+- Scrollable panels (`ScrolledPanel`) and two-row action controls so high-DPI scaling and low-vision zoom never clip controls.
+- Accessible waveform summary readout beneath the dual-waveform canvas reporting peak amplitude, RMS dB levels, and mapped acoustic delta peaks as plain text.
+- High-contrast WCAG AA/AAA status banners in the Pre-Flight Evasion Simulator (`#046C4E`, `#92400E`, `#B91C1C` with `#FFFFFF` text) plus read-only scrollable dialogs for release notes (`F2`), keyboard shortcuts (`F1`), upload protocol (`Ctrl+H`), and support tickets (`Ctrl+T`).
 
-#### Option 2: Portable Archive (No Installation Required)
-Extract `dist/GhostWaveStudio-v1.2.0-Portable.zip` to any folder:
-- Run `GhostWaveStudio.exe` to launch the graphical interface
-- Run `ghostwave-cli.exe` from PowerShell or Command Prompt for batch workflows
-- Runs self-contained without needing Python on the host machine
+## Core Features
 
-#### Option 3: Run from Python Source
-Requires Python 3.10+ and a local FFmpeg installation:
+### Audio DSP & Pre-Flight Analysis
+- Tuned target platform presets for Suno v4-v6 Cover Mode, Google Lyria 3.5 (watermark neutralizer only), Udio 1.5/2.0, YouTube Content ID, TikTok/Reels, and Custom.
+- Automatic musical key and BPM estimation on file load, paired with one-click harmonious transposition suggestions (`+2`, `+5`, or `-2` semitones).
+- Modular DSP pipeline covering pitch shift (`-12` to `+12` st), independent vocal formant shift (`-6` to `+6` st), tempo factor (`0.85` to `1.15`), studio room re-amping, center vocal ducking or cut, AI watermark neutralization (SynthID/AudioSeal/WavMark phase dispersion), Terhardt ATH psychoacoustic decoy peak masking, micro-chrono jitter, and Schroeder all-pass phase dispersion.
+- Dual-waveform visualizer plotting original vs sanitized signals with real envelope-delta peak markers, plus inline A/B/Delta audio audition buttons inside the main window.
+- Pre-Flight Evasion Simulator (`Alt+F`) and Chromaprint Audit (`Alt+E`) measuring CQT chroma cosine similarity, STFT landmark constellation overlap, high-frequency carrier dispersion, vocal band attenuation, and Chromaprint BER before uploading.
+- Batch Queue and background Folder Watcher (`Ctrl+Shift+B`) for processing whole directories with optional 22-second WAV slicing.
+
+### Lyrics Studio
+- Multilingual phonotactic syllabifier that splits English, Indonesian, Spanish, French, and other Latin-script lyrics into singable hyphenated syllables while leaving inline tags like `[Chorus]` untouched.
+- Rhyme-preserving semantic cloaking (protects end-of-line rhyming words), phonetic spelling variation, hybrid ad-lib breaking, sound-alike substitution, and optional Cloud LLM rewriting (Groq, OpenRouter, OpenAI, or custom endpoints).
+- Single-pass regex celebrity and profanity filtering, Unicode normalization, structure tag standardization, Suno/Udio style prompt generation, and 4-gram overlap auditing.
+
+### Security, Updates & Support
+- Encrypted local `.sn` vault storing API tokens, DSP settings, support ticket keys, and custom blacklists with Fernet (`AES-128-CBC` + `HMAC-SHA256`), `PBKDF2-HMAC-SHA256` key derivation (100,000 iterations), and `.bak` rotation.
+- GitHub Releases update checker with offline fallback to root `changelog.txt` and inline release note reading (`F2`).
+- Built-in Support Ticket Center (`Ctrl+T`) for submitting bug reports or feature requests and reading developer replies via a private Cloudflare Worker relay.
+
+## Installation and Quick Start
+
+### Option 1: Windows Installer or Portable Archive
+Download the latest release from [GitHub Releases](https://github.com/muhamadalfian20892/GhostWave-Studio/releases):
+- `GhostWaveStudio-v1.7.0-Setup.exe`: Installs desktop and CLI binaries, Start Menu shortcuts, optional `PATH` integration for `ghostwave-cli`, and uninstaller.
+- `GhostWaveStudio-v1.7.0-Portable.zip`: Extract anywhere and run `GhostWaveStudio.exe` or `ghostwave-cli.exe` with no Python installation required.
+
+### Option 2: Run from Python Source
+Requires Python 3.10+ and FFmpeg in your system `PATH` (with `libchromaprint` enabled if you want Chromaprint CLI audits):
 
 ```bash
-# 1. Install dependencies
 pip install -r requirements.txt
-
-# 2. Launch the desktop interface
-python gui.py
-# or:
 python main.py
+```
 
-# 3. Process an audio file via CLI
+### CLI Usage Examples
+
+```bash
+# Process an audio file with default preset to 16-bit PCM WAV
 python main.py -i input.mp3 -o cloaked.wav --format wav --preset max
 
-# 4. Split an audio track into 22-second segments for library upload
-python main.py -i input.mp3 --slice --slice-duration 22.0
+# Run Pre-Flight Evasion simulation comparing original and processed audio
+python main.py -i input.mp3 -o cloaked.wav --preflight
 
-# 5. Cloak a lyrics file using the acoustic spelling scrambler
+# Slice a track into 22-second WAV segments
+python main.py -i input.mp3 --slice --slice-duration 22.0 -o ./suno_chunks
+
+# Batch process a directory or watch an inbox folder
+python main.py --batch-dir ./raw_tracks -o ./processed_tracks --format wav
+python main.py --watch-input ./inbox --watch-output ./outbox
+
+# Sanitize lyrics with the multilingual phonetic scrambler
 python main.py --lyrics lyrics.txt --lyrics-out cloaked.txt --lyrics-mode scramble
-
-# 6. Run the test suite (38 unit tests)
-python -m unittest test_app.py
 ```
 
-#### Rebuilding the Executables and Installer from Source
+## Keyboard Shortcuts
 
-```bash
-# Compile standalone binaries using PyInstaller
-pyinstaller ghostwave.spec --noconfirm --clean
+| Shortcut | Action |
+|---|---|
+| `Alt+1` / `Alt+2` / `Ctrl+Tab` | Switch between Audio Sanitizer and Lyrics Sanitizer tabs |
+| `Alt+B` / `Ctrl+O` | Browse for an audio file |
+| `Alt+P` / `Ctrl+P` | Process and export audio |
+| `Alt+F` | Open Pre-Flight AI Evasion Simulator |
+| `Alt+E` / `Ctrl+E` | Open Chromaprint Audio Similarity Audit |
+| `Ctrl+Shift+B` | Open Batch Processing & Folder Watcher |
+| `Ctrl+U` | Open ABS Audio Slicer |
+| `Ctrl+B` | Edit Celebrity Blacklist |
+| `Ctrl+Shift+S` / `Ctrl+Shift+O` | Export or import encrypted `.sn` profile |
+| `Ctrl+T` | Open Support Ticket Center |
+| `F1` / `F2` / `Shift+F1` | Accessibility Guide / Changelog / Suno Upload Guide |
+| `Escape` | Close active dialog |
 
-# Compile Windows setup installer using Inno Setup 6
-"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+## Project Structure
+
+```text
+GhostWave-Studio/
+├── main.py                  # Unified CLI and GUI entry point
+├── ghostwave/               # Core application package
+│   ├── version.py           # Single source of truth for APP_VERSION
+│   ├── audio_processor.py   # Vectorized SciPy/NumPy DSP and pre-flight simulator
+│   ├── lyrics_processor.py  # Multilingual syllabifier, cloaker, and style prompt builder
+│   ├── batch_processor.py   # Batch queue manager and background folder watcher
+│   ├── cloud_stem_api.py    # Optional remote stem separation (Replicate/HF/REST)
+│   ├── config_manager.py    # Fernet encrypted .sn vault and .bak recovery
+│   ├── gui.py               # Accessible wxPython Phoenix desktop interface
+│   ├── i18n.py              # Bilingual runtime localization (EN / ID)
+│   ├── support_client.py    # Cloudflare Worker support ticket client
+│   └── updater.py           # GitHub Releases updater and changelog cache
+├── locales/                 # Translation catalogs (en.json, id.json)
+├── docs/                    # Plain-text accessible user guides (EN / ID)
+├── packaging/               # PyInstaller spec and Inno Setup installer script
+├── assets/                  # Application icon
+├── tests/                   # Automated unit test suite
+└── changelog.txt            # Release history (kept at root for in-app updater)
 ```
-
----
-
-## Development Changelog and Release Notes
-
-New on 10/09/2026 (v1.2.0):
-
-	Vectorized adversarial pseudo-peak injection in apply_adversarial_peak_injection using 2D NumPy array operations. This eliminates pure-python column iteration across STFT spectrograms and drops execution time by up to 98%.
-
-	Added fast Fourier transform padding with next_fast_len in both single-band and multi-band Hilbert Bode frequency shifters. This avoids O(N^2) discrete Fourier transform degradation when audio lengths contain large prime factors.
-
-	Added second-order section filter coefficient caching for Butterworth and Schroeder all-pass biquads using lru_cache. The design calculations are evaluated once per sample rate rather than recalculated across every audio segment.
-
-	Vectorized multi-stage Schroeder all-pass phase dispersion to process multi-channel audio arrays directly through cascaded second-order sections in contiguous float32 buffers.
-
-	Replaced iterative blacklist scanning in filter_celebrities and filter_profanities with single-pass compiled regular expressions, handling large text blocks in a single traversal.
-
-	Added LRU caching to universal_syllabify and count_syllables to eliminate redundant syllable parsing across repeated song refrains.
-
-	Added cooperative thread cancellation across the DSP pipeline with a dedicated Cancel button in the desktop interface, ensuring instant user cancellation without leaving dangling files.
-
-	Throttled UI progress callbacks in the audio worker thread to a maximum of 25 updates per second and minimum 2% delta to prevent event queue flooding on systems with constrained CPU resources.
-
-	Added a collapsible Show Advanced Settings toggle button to hide granular DSP sliders, the 10 multi-vector evasion checkboxes, and duration settings by default, keeping the main interface focused and uncluttered.
-
-	Set the short clip duration trimmer to disabled and unchecked by default across presets, configuration files, and command-line options.
-
-	Added hyperbolic tangent soft limiting before integer PCM export to prevent clipping on aggressive phase shifts.
-
-	Added stereo cross-correlation safeguards in center vocal suppression to protect against mono phase cancellation.
-
-	Added multi-threaded encoding parameters for FFmpeg conversions.
-
-	Added zero-byte and non-finite sample checks to protect audio loading against corrupted files.
-
-	Updated application version tracking across all dialog titles and CLI parameters to version 1.2.0.
-
-	Added unit tests in test_app.py covering all three user personas: standard user, developer, and constrained hardware environments, expanding the test suite to 38 unit tests.
-
-New on 10/09/2026 (v1.0.0):
-
-	Added an in-app update checker that queries the GitHub releases API directly without intermediary servers. A fallback to changelog.txt at the repository root guarantees update availability even when anonymous API rate limits are reached.
-
-	Designed an accessible update prompt dialog in updater.py following the standard desktop pattern. The dialog announces "Version X.Y.Z is available. Download this update?" and provides "Download Later", "Download Now", and "See What's New in This Changes" action buttons.
-
-	Implemented an inline changelog reader inside the update dialog. Clicking "See What's New in This Changes" expands the release notes panel in the same window while keeping the download buttons visible and accessible, maintaining screen reader focus without popout navigation friction.
-
-	Integrated a streaming chunked background downloader for setup binaries. The download dialog reports progress bytes, percentage, and estimated completion, followed by an immediate prompt to execute the installer.
-
-	Added full keyboard accessibility and screen reader support across all update controls. Every button, status label, progress indicator, and text control includes an explicit name and mnemonic shortcut.
-
-	Added the --check-update command-line flag in main.py for headless environments and batch scripts.
-
-	Added unit tests in test_app.py covering version comparison logic, changelog parser routines, update dialog state toggles, and screen reader labels.
-
-New on 10/08/2026:
-
-	Added native multilingual support to the Acoustic Spelling Scrambler for Indonesian, Spanish, French, and other Latin-script languages. The earlier dictionary was English-oriented, which caused non-English text to pass through without orthographic changes.
-
-	Implemented the Universal Multilingual Phonotactic Syllabifier in lyrics_processor.py. The algorithm parses multi-syllable tokens into musical singing syllables using hyphens according to phonotactic boundary rules and language digraphs (ng, ny, kh, sy, ch, sh, th, ph, ll, rr, qu). In tests with Indonesian song lyrics, tokens like "menghapus jejakmu" become "meng-ha-pus je-jak-mu" and "kuasai diriku" become "ku-a-sa-i di-ri-ku". Suno synthesizes these with natural vocal delivery, while 4-gram database matching drops to 0.0%.
-
-	Added over 200 Indonesian singing terms to the phonetic dictionary, including singable elisions such as "t'lah", "s'dah", "s'per-ti", "s'la-lu", "s'mu-a", and "kar'na".
-
-	Added standalone binary distribution and Inno Setup installer packaging. GhostWave Studio can be installed via dist/installer/GhostWaveStudio-v1.0-Setup.exe or run portably from dist/GhostWaveStudio-v1.0-Portable.zip without requiring a local Python installation.
-
-	Built a dual-binary PyInstaller specification (ghostwave.spec) that bundles both the accessible graphical application (GhostWaveStudio.exe) and the command-line utility (ghostwave-cli.exe) with shared runtime libraries.
-
-	Generated a multi-resolution application icon (ghostwave.ico) featuring an acoustic waveform motif, embedded across both executables, the installer, and desktop shortcuts.
-
-	Configured the Inno Setup 6 compiler script (installer.iss) with LZMA2 solid compression, modern wizard styling, automatic uninstaller registration, and an optional task to register ghostwave-cli in the user environment PATH.
-
-	Added vocal vibrato glide markers (~) to cadence endings. Appending tildes to line endings breaks sentence matchers and regex filters while prompting Suno's vocal model to add melodic inflection.
-
-	Added rule-based morphological scramblers that convert "-ing" endings into "[stem]-in'", past-tense "-ed" suffixes into "[stem]'d", and "-ght" clusters into "-ite".
-
-	Updated syllable counting logic to parse hyphenated syllables directly, ensuring exact metric measurements across all languages.
-
-	Maintained optional alternative modes for testing, including Stealth Hybrid, Phonetic Disguise, Semantic Cadence, and remote Cloud LLM rewriting.
-
-	Added an automatic Lyrics Evasion Audit tool that calculates 4-gram sequence overlap, token similarity, and syllable cadence accuracy in the interface and CLI.
-
-	Added CLI options (--lyrics, --lyrics-out, --lyrics-mode, --no-adlibs) for automated batch lyrics processing.
-
-	Added unit tests in test_app.py covering Indonesian and Spanish lyrics cloaking, bringing the total suite to 23 unit tests. All tests pass.
-
-New on 10/07/2026:
-
-	Renamed the project to GhostWave Studio v1.0. The old temporary filenames were getting confusing across the codebase.
-
-	Added the encrypted .sn configuration container format. The application now saves API credentials, blacklist entries, and DSP preferences using Fernet (AES-128-CBC with HMAC-SHA256) with keys derived through PBKDF2-HMAC-SHA256 across 100,000 iterations.
-
-	The .sn container file uses a 16-byte magic header (GHOSTWAVE_SN_V1\x00). Opening the file in a plain text editor shows only binary ciphertext.
-
-	Added HMAC integrity verification on load. If any byte in the configuration file is modified externally, the loader detects the signature mismatch and cleanly rejects the file.
-
-	Added an automatic migration routine for older setups. Existing JSON configurations are imported into the user's default .sn vault at startup.
-
-	Added Ctrl+Shift+S to export profiles and Ctrl+Shift+O to import them in the File menu.
-
-	The CLI now accepts --config-sn to specify a custom vault path.
-
-	Added 4 unit tests covering header validation, ciphertext verification, roundtrip serialization, and corrupted file handling. All 21 unit tests pass cleanly.
-
-New on 10/05/2026:
-
-	Investigated the upload rejection error from Suno regarding matching recordings. Testing confirmed that simple semitone pitch shifts and static vocal cuts remain detectable by Audible Magic's VIBE embeddings and landmark hashers.
-
-	Added an asymmetric Hilbert Bode frequency shifter. Shifting mid frequencies by +12 Hz and high frequencies by -16 Hz via single-sideband analytic modulation alters harmonic spacing, which disrupts Constant-Q Transform chroma bins used in neural cover detection.
-
-	Added micro-chrono jitter using dual out-of-phase low-frequency modulators to apply continuous non-linear time warping of ±16ms. This modulates the time deltas between spectral peaks to flatten time-offset histograms.
-
-	Added a slow pitch wobble LFO at 0.22 Hz and 28% depth to prevent stationary chroma vectors from forming.
-
-	Added an STFT pseudo-peak generator that places small decoy energy peaks at offset coordinates to draw peak extraction away from original landmarks.
-
-	Added 4-stage Schroeder all-pass phase dispersion filters at 420 Hz, 1350 Hz, 2900 Hz, and 5400 Hz. These shift signal phase while maintaining flat unit gain across frequencies.
-
-	Added an acoustic room impulse response convolution step to simulate physical speaker playback in a small studio room.
-
-New on 10/03/2026:
-
-	Added the audio slicer utility, accessible via Alt+S, Ctrl+U, or the --slice flag in the CLI.
-
-	Tests show Audible Magic requires approximately 5 to 8 contiguous seconds of matching peak patterns. Dividing tracks into 20 to 24 second chunks disrupts long-term correlation windows.
-
-	The slicer exports 16-bit PCM WAV files at 48 kHz with clean headers, omitting ID3 tags and encoder padding.
-
-	Adjusted the center vocal cancellation crossover. Audio below 160 Hz is preserved in mono to keep low-end bass intact, while frequencies above 160 Hz undergo center subtraction.
-
-	Added a low-level background drone and vinyl texture at -26 dBFS to introduce additional spectral energy across the timeline.
-
-	Added 4.0 seconds of front padding and 2.0 seconds of tail padding to displace initial time offsets.
-
-New on 10/01/2026:
-
-	Added remote stem separation support via cloud REST endpoints (Replicate and Hugging Face). This keeps the local environment free from heavy PyTorch dependencies and checkpoint files.
-
-	Added the Chromaprint audit dialog (Alt+E or Ctrl+E). It calculates bitwise Hamming distances and sliding-window cross-correlation against the original file to report estimated evasion rates and vocal band attenuation.
-
-	Added the lyrics moderation tab with a configurable artist blacklist to catch names that could trigger Whisper transcription filters.
-
-New on 09/28/2026:
-
-	Updated accessibility across wxPython dialogs. Controls, sliders, and input fields now include explicit accessible names for screen readers such as NVDA, JAWS, and Windows Narrator.
-
-	Added keyboard shortcuts across primary operations, including Alt+O for browsing, Alt+C for cloaking, Alt+P for playback, Alt+S for the slicer, Alt+E for audits, and Shift+F1 for guidelines.
-
-	Fixed an issue where pressing Escape during playback preview left the audio playback thread running in the background. Windows now stop active playback on close.
-
-	Implemented atomic file writes for exports and configuration updates to prevent truncated files if an operation is canceled.
-
-	FFmpeg temporary files are now unlinked immediately after conversion completes or on failure.
-
----
-
-## Operational Findings for Suno Uploads
-
-When uploading audio to Suno, uploads are evaluated by automated filters. If you encounter the recording match notice, the following procedures address the primary detection vectors:
-
-1. Export as 16-bit PCM WAV. MP3 files include encoder delay padding and container metadata that fingerprinting systems inspect during initial ingestion.
-2. Upload through the Library page rather than the Create page. The Library interface processes files through background workers with different validation constraints. After processing, tracks can be extended via the track menu.
-3. Keep segments between 18 and 24 seconds. Shorter segments limit the window Audible Magic has to identify continuous landmark sequences.
-4. If an upload was recently rejected, clear site cookies or use a private browsing window to reset session tracking.
-5. Apply center vocal reduction or cloud stem separation, and check lyrics for artist names before submission.
-
----
-
-## Graphical User Interface Reference
-
-Start the interface by running `python gui.py` or `python main.py`.
-
-* Preset Selector:
-  - Maximum Evasion: Activates all DSP vectors, sets output to 16-bit WAV, and configures the 24-second target duration.
-  - Balanced Quality: Uses moderate micro-pitch jitter and mild phase dispersion for higher acoustic clarity.
-  - Vocal Reduction Only: Applies center-channel cancellation without time warping or pitch shifting.
-* ABS Audio Slicer (Alt+S or Ctrl+U): Slices tracks into 20 to 24 second WAV segments with configurable overlap.
-* Acoustic Evasion Audit (Alt+E or Ctrl+E): Computes Chromaprint cross-correlation, bitwise Hamming distance, and vocal attenuation against the source file.
-* Profile Export and Import (Ctrl+Shift+S and Ctrl+Shift+O): Saves or loads encrypted .sn configuration files.
-* Cloud API Vault (Alt+A or Ctrl+K): Manages Replicate and Hugging Face tokens for remote stem processing.
-* Guidelines Reference (Shift+F1 or Ctrl+H): Opens the operational upload reference window.
-* Check for Updates (Help menu): Queries GitHub Releases for newer builds, opens the accessible changelog view, and downloads installers directly.
-
----
-
-## Command-Line Interface Reference
-
-The command-line interface provides the same processing capabilities for scripts and terminal use:
-
-```bash
-# Check GitHub for application updates and view release notes
-python main.py --check-update
-
-# Maximum evasion preset with WAV output
-python main.py -i song.mp3 -o cloaked.wav --format wav --preset max
-
-# Slice a track into 22-second segments
-python main.py -i song.mp3 --slice --slice-duration 22.0 -o ./sliced_chunks
-
-# Use a custom encrypted profile vault
-python main.py -i song.mp3 -o cloaked.wav --config-sn "custom_profile.sn"
-
-# Balanced preset with MP3 output
-python main.py -i song.mp3 -o cloaked.mp3 --format mp3 --preset balanced
-
-# Compare two existing audio files with Chromaprint
-python main.py -i original.mp3 -o cloaked.wav --audit-only
-
-# Cloak a lyrics file using the acoustic spelling scrambler (preserves words)
-python main.py --lyrics song_lyrics.txt --lyrics-out cloaked_lyrics.txt --lyrics-mode scramble
-
-# Process both audio and lyrics simultaneously
-python main.py -i song.mp3 -o cloaked.wav --lyrics song_lyrics.txt --lyrics-out cloaked_lyrics.txt
-```
-
----
-
-## Technical Overview and Signal Flow
-
-```
-+-----------------------------------------------------------------------------+
-|                     GHOSTWAVE SIGNAL PROCESSING PIPELINE                    |
-+-----------------------------------------------------------------------------+
-| 1. Dynamic Micro-Chrono Jitter: +/-16ms non-linear drift                    |
-| 2. Asymmetric Triple-Band Bode Frequency Shifter (+12Hz mid / -16Hz high)   |
-| 3. Continuous Pitch Wobble LFO: 0.22 Hz swept vibrato                       |
-| 4. Center Vocal Cancellation: L-R phase subtraction above 160 Hz            |
-| 5. Camouflage Harmonic Drone Bed: -26 dBFS drone with vinyl texture         |
-| 6. Acoustic Padding: 4.0s intro pad and 2.0s tail padding                  |
-| 7. Adversarial Pseudo-Peak Injection: Decoy peaks in STFT spectrogram       |
-| 8. Schroeder All-Pass Phase Dispersion: 4-stage cascaded phase shift        |
-| 9. Virtual Room Convolution: Early reflections and boundary diffusion       |
-| 10. Vocal Modulation: Formant ring modulation and comb flanging             |
-| 11. Remote Stem Separation: Cloud Demucs processing via REST API            |
-| 12. PCM Export: 16-bit WAV with metadata stripped                           |
-+-----------------------------------------------------------------------------+
-```
-
-### Configuration Container (.sn) Specifications
-- Container Header: 16-byte identifier (GHOSTWAVE_SN_V1\x00)
-- Cipher: Fernet (AES-128-CBC with HMAC-SHA256 authenticated encryption)
-- Key Derivation: PBKDF2-HMAC-SHA256 (100,000 iterations)
-- Data Integrity: HMAC authenticated payload with immediate rejection on mismatch
-- Default Location: ~/.ghostwave.sn or the current working directory
-
----
 
 ## Testing
 
-The test suite covers the DSP routines, the .sn cryptographic container, remote API configuration, audio slicing, and GUI accessibility:
+Run the full test suite (77 unit tests covering DSP modules, Pre-Flight simulator, `.sn` encryption, lyrics syllabification, batch/folder watcher, CLI guards, i18n parity, contrast compliance, and NVDA accessible names):
 
 ```bash
-python -m unittest test_app.py
+python -m unittest discover -s tests -v
 ```
 
-All 38 tests run in approximately 10 seconds.
+## Building Standalone Binaries
 
----
+```bash
+pyinstaller packaging/ghostwave.spec --noconfirm --clean
+"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging\installer.iss
+```
 
 ## Contributing
 
-Contributions to GhostWave Studio are welcome. Please refer to [CONTRIBUTING.md](file:///E:/code/GhostWave-Studio/CONTRIBUTING.md) for environment configuration, coding standards, test requirements, and pull request procedures.
-
----
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for environment setup, accessibility rules, and pull request steps, and see [changelog.txt](changelog.txt) for full version history.
 
 ## Research and Educational Disclaimer
 
-GhostWave Studio is developed as an academic and engineering research project to investigate acoustic fingerprinting robustness, neural audio embeddings, and automated speech recognition ingestion filters. This software is provided for experimental study, education, and format compatibility research. Users are responsible for ensuring that their use of this software complies with applicable local laws and the terms of service of third-party platforms.
-
----
+GhostWave Studio is an engineering and accessibility research project exploring acoustic fingerprinting robustness, neural audio embeddings, and automated speech recognition filters. Users are responsible for ensuring that their use complies with applicable laws and platform terms of service.
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](file:///E:/code/GhostWave-Studio/LICENSE) file for the complete license terms.
+Licensed under the MIT License. See [LICENSE](LICENSE).
 
-Copyright (c) 2026 Muhamad alfian / Technokers lab.
-
+Copyright (c) 2026 Muhamad Alfian / Technokers Lab.

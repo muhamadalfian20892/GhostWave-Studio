@@ -1,29 +1,49 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
+
+ROOT = os.path.abspath(os.path.join(SPECPATH, '..'))
+ICON_PATH = os.path.join(ROOT, 'assets', 'ghostwave.ico')
+COMMON_DATAS = [
+    (ICON_PATH, '.'),
+    (os.path.join(ROOT, 'changelog.txt'), '.'),
+    (os.path.join(ROOT, 'docs', 'README.txt'), '.'),
+    (os.path.join(ROOT, 'docs', 'README_ID.txt'), '.'),
+    (os.path.join(ROOT, 'locales'), 'locales'),
+]
+COMMON_HIDDEN = [
+    'scipy.special',
+    'scipy.signal',
+    'scipy.io.wavfile',
+    'scipy.fft',
+    'soundfile',
+    'sounddevice',
+    'cryptography',
+    'cryptography.fernet',
+    'wx',
+    'wx.lib.scrolledpanel',
+    'urllib.request',
+    'ghostwave.batch_processor',
+]
+COMMON_EXCLUDES = [
+    'torch', 'torchaudio', 'tensorflow', 'matplotlib', 'tkinter', 'pandas',
+    'IPython', 'PIL', 'sphinx', 'docutils', 'babel', 'alabaster', 'jieba',
+    'lxml', 'setuptools', 'wheel', 'pkg_resources', 'yaml', 'zope', 'pytz',
+    'pytest',
+]
 
 block_cipher = None
 
 # GUI Application Analysis
 a_gui = Analysis(
-    ['gui.py'],
-    pathex=['.'],
+    [os.path.join(ROOT, 'ghostwave', 'gui.py')],
+    pathex=[ROOT],
     binaries=[],
-    datas=[('ghostwave.ico', '.'), ('changelog.txt', '.'), ('README.txt', '.'), ('README_ID.txt', '.'), ('locales', 'locales')],
-    hiddenimports=[
-        'scipy.special',
-        'scipy.signal',
-        'scipy.io.wavfile',
-        'scipy.fft',
-        'soundfile',
-        'cryptography',
-        'cryptography.fernet',
-        'wx',
-        'requests',
-        'urllib.request',
-    ],
+    datas=COMMON_DATAS,
+    hiddenimports=COMMON_HIDDEN,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['torch', 'torchaudio', 'tensorflow', 'matplotlib', 'tkinter', 'pandas', 'IPython', 'PIL'],
+    excludes=COMMON_EXCLUDES,
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -48,31 +68,20 @@ exe_gui = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='ghostwave.ico',
+    icon=ICON_PATH,
 )
 
 # CLI Tool Analysis
 a_cli = Analysis(
-    ['main.py'],
-    pathex=['.'],
+    [os.path.join(ROOT, 'main.py')],
+    pathex=[ROOT],
     binaries=[],
-    datas=[('ghostwave.ico', '.'), ('changelog.txt', '.'), ('README.txt', '.'), ('README_ID.txt', '.'), ('locales', 'locales')],
-    hiddenimports=[
-        'scipy.special',
-        'scipy.signal',
-        'scipy.io.wavfile',
-        'scipy.fft',
-        'soundfile',
-        'cryptography',
-        'cryptography.fernet',
-        'wx',
-        'requests',
-        'urllib.request',
-    ],
+    datas=COMMON_DATAS,
+    hiddenimports=COMMON_HIDDEN,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['torch', 'torchaudio', 'tensorflow', 'matplotlib', 'tkinter', 'pandas', 'IPython', 'PIL'],
+    excludes=COMMON_EXCLUDES,
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -97,7 +106,7 @@ exe_cli = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='ghostwave.ico',
+    icon=ICON_PATH,
 )
 
 coll = COLLECT(

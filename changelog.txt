@@ -1,5 +1,24 @@
 GhostWave Studio - Changelog & Release Notes
 
+Version: 1.7.0
+Release Date: 2026-11-17
+
+What is new:
+New on 11/17/2026:
+	Target Platform Presets: Added tailored evasion profiles for modern 2026 music platforms, including Suno v4-v6 Cover Mode, Google Lyria 3.5, Udio AI, YouTube Content ID, TikTok/Reels, and Custom.
+	Pre-Flight Evasion Simulator: Added a pre-upload safety audit dialog (Alt+F or Tools menu) that simulates CQT chroma matching, acoustic landmark constellation hashes, neural watermark detection, and harmonic drift, giving you a clear safety score and practical suggestions before you upload.
+	AI Watermark Neutralizer: Added an optional filter that neutralizes imperceptible neural audio watermarks (such as SynthID, AudioSeal, and WavMark) using phase-jitter comb diffusion, sub-band dispersion, and shaped dither without altering audio clarity.
+	Psychoacoustic Decoy Masking: Enhanced adversarial peak injection using the Terhardt Absolute Threshold of Hearing (ATH) curve, ensuring decoy peaks sit safely in inaudible frequency masked bands so fingerprint hashers get confused while your music sounds clean.
+	Modular Audio Sliders: Replaced rigid modes with intuitive direct sliders for Pitch Shift (semitones), Formant Shift (independent of pitch), Tempo Factor (%), Room Reverb (%), and Vocal Ducking (%), each with well-tuned defaults.
+	Musical Key and BPM Detection: Loading any audio file now automatically detects its musical key, tempo, and provides safe, musically harmonious transposition suggestions (+2 or -2 semitones) via a one-click button.
+	Dual-Waveform and Spectral Visualizer: Added a live visual display comparing original (blue) and sanitized (emerald) waveforms, complete with gold markers displaying where decoy peaks were injected.
+	Real-Time A/B and Delta Player: Added instant audition buttons to switch between Original, Sanitized, and the isolated Difference (Delta) audio directly within the interface without needing external media players.
+	Batch Processing and Folder Watcher: Added a queue manager (Ctrl+Shift+B) for processing multiple files at once with optional automatic slicing, along with an automated Folder Watcher that monitors incoming files in a folder and processes them automatically in the background.
+	Suno and Udio Style Prompt Generator: Added a helper in the Lyrics tab to generate genre prompts, mood descriptors, and bracketed structure tags ([Intro], [Verse], [Chorus], [Bridge], [Outro]) based on detected BPM and key.
+	Rhyme-Preserving Lyrics Cloaker: Added a checkbox to protect end-line rhymes and cadence during phonetic and syllable cloaking.
+	Expanded CLI Controls: Added command-line flags for --preflight, --watermark-clean, --formant, --no-psycho, --watch-input, --watch-output, and --batch-dir.
+	Updated Unit Test Suite: Added test coverage across all new DSP routines, batch queuing, folder monitoring, accessibility labels, contrast compliance, and dialog lifecycle, expanding the suite to 77 passing unit tests.
+
 Version: 1.6.2
 Release Date: 2026-10-12
 

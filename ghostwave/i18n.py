@@ -30,8 +30,8 @@ def _get_locales_dir() -> Path:
         # Running inside PyInstaller bundled bundle
         base = Path(sys._MEIPASS)
     else:
-        # Running directly from source tree
-        base = Path(__file__).resolve().parent
+        # Running directly from source tree (project root)
+        base = Path(__file__).resolve().parent.parent
 
     locales_path = base / "locales"
     if locales_path.is_dir():
@@ -86,7 +86,7 @@ def get_supported_languages() -> List[Tuple[str, str]]:
     return list(SUPPORTED_LANGUAGES)
 
 
-def tr(key: str, **kwargs: Any) -> str:
+def tr(key: str, /, **kwargs: Any) -> str:
     """
     Translates a key into the active language with English fallback and variable formatting.
     """

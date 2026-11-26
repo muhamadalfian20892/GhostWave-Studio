@@ -1,8 +1,8 @@
-; Inno Setup Script for GhostWave Studio v1.6.2
+; Inno Setup Script for GhostWave Studio v1.7.0
 ; Build standalone Windows installer package
 
 #define MyAppName "GhostWave Studio"
-#define MyAppVersion "1.6.2"
+#define MyAppVersion "1.7.0"
 #define MyAppPublisher "Muhamad Alfian"
 #define MyAppURL "http://technokerslab.blogspot.com/"
 #define MyAppExeName "GhostWaveStudio.exe"
@@ -19,10 +19,10 @@ AppUpdatesURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
-LicenseFile=LICENSE
-OutputDir=dist\installer
-OutputBaseFilename=GhostWaveStudio-v1.6.2-Setup
-SetupIconFile=ghostwave.ico
+LicenseFile=..\LICENSE
+OutputDir=..\dist\installer
+OutputBaseFilename=GhostWaveStudio-v1.7.0-Setup
+SetupIconFile=..\assets\ghostwave.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -39,12 +39,12 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "addtopath"; Description: "Add GhostWave CLI to User PATH (allows running 'ghostwave-cli' from terminal)"; GroupDescription: "Command Line Integration:"; Flags: unchecked
 
 [Files]
-Source: "dist\GhostWaveStudio\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "README.txt"; DestDir: "{app}"; Flags: ignoreversion
-Source: "README_ID.txt"; DestDir: "{app}"; Flags: ignoreversion
-Source: "LICENSE"; DestDir: "{app}"; Flags: ignoreversion
-Source: "changelog.txt"; DestDir: "{app}"; Flags: ignoreversion
-Source: "ghostwave.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\GhostWaveStudio\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\docs\README.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\docs\README_ID.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\changelog.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\assets\ghostwave.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\ghostwave.ico"

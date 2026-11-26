@@ -17,22 +17,40 @@ import os
 import sys
 import threading
 import time
+import tempfile
 from pathlib import Path
 from typing import Optional
 
-import wx
+try:
+    import winsound
+except ImportError:
+    winsound = None
 
-from audio_processor import (
+try:
+    import sounddevice as sd
+except Exception:
+    sd = None
+
+import numpy as np
+import soundfile as sf
+import wx
+import wx.lib.scrolledpanel as scrolled
+
+if __package__ is None:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from ghostwave.audio_processor import (
     AudioProcessor,
     AudioSanitizeOptions,
     AudioProcessResult,
-    benchmark_evasion_metrics
+    benchmark_evasion_metrics,
+    load_audio_samples
 )
-from cloud_stem_api import CloudApiConfig, CloudStemClient
-from config_manager import GhostWaveConfig, DEFAULT_SN_FILENAME, resolve_config_path
-from lyrics_processor import LyricsProcessor, LyricsSanitizeResult, DEFAULT_CELEBRITY_BLACKLIST
-from updater import (
-    APP_VERSION,
+from ghostwave.batch_processor import BatchProcessor, BatchTask, FolderWatcher
+from ghostwave.cloud_stem_api import CloudApiConfig, CloudStemClient
+from ghostwave.config_manager import GhostWaveConfig, DEFAULT_SN_FILENAME, resolve_config_path
+from ghostwave.lyrics_processor import LyricsProcessor, LyricsSanitizeResult, DEFAULT_CELEBRITY_BLACKLIST, generate_suno_style_prompt
+from ghostwave.updater import (
     UpdateInfo,
     UpdateDialog,
     UpdateDownloadDialog,
@@ -42,8 +60,73 @@ from updater import (
     get_cached_changelog_text,
     fetch_and_save_latest_changelog
 )
-from i18n import tr, _t, get_language, set_language, get_supported_languages, init_translations
-import support_client
+from ghostwave.version import APP_VERSION
+from ghostwave.i18n import tr, _t, get_language, set_language, get_supported_languages, init_translations
+from ghostwave import support_client
+
+
+class AccessibleControlName(wx.Accessible):
+    """
+    Ensures NVDA, JAWS, and Windows Narrator reliably announce the control label
+    via native MSAA/IAccessible get_accName.
+    """
+    def __init__(self, win: wx.Window, name_supplier):
+        super().__init__(win)
+        self._supplier = name_supplier
+
+    def GetName(self, childId: int):
+        try:
+            val = self._supplier() if callable(self._supplier) else str(self._supplier)
+            return (wx.ACC_OK, str(val))
+        except Exception:
+            return (wx.ACC_NOT_IMPLEMENTED, "")
+
+
+def make_accessible_control(ctrl: wx.Window, name_or_fn, tooltip_or_fn=None):
+    """
+    Binds accessible name and tooltip across a control and all child controls (e.g. SpinCtrl edit boxes).
+    Guarantees screen readers speak the correct label on focus in the active language.
+    """
+    if not ctrl:
+        return
+
+    def get_name():
+        try:
+            return name_or_fn() if callable(name_or_fn) else str(name_or_fn)
+        except Exception:
+            return ""
+
+    init_name = get_name()
+    ctrl.SetName(init_name)
+    try:
+        acc = AccessibleControlName(ctrl, get_name)
+        ctrl._acc_obj = acc
+        ctrl.SetAccessible(acc)
+    except Exception:
+        pass
+
+    tip = ""
+    if tooltip_or_fn:
+        try:
+            tip = tooltip_or_fn() if callable(tooltip_or_fn) else str(tooltip_or_fn)
+            ctrl.SetToolTip(tip)
+        except Exception:
+            pass
+
+    # For compound controls such as wx.SpinCtrl or wx.SpinCtrlDouble (TextCtrl and SpinButton):
+    for child in ctrl.GetChildren():
+        child.SetName(init_name)
+        try:
+            child_acc = AccessibleControlName(child, get_name)
+            child._acc_obj = child_acc
+            child.SetAccessible(child_acc)
+        except Exception:
+            pass
+        if tip:
+            try:
+                child.SetToolTip(tip)
+            except Exception:
+                pass
 
 
 class BlacklistDialog(wx.Dialog):
@@ -80,7 +163,7 @@ class BlacklistDialog(wx.Dialog):
             style=wx.TE_MULTILINE | wx.TE_DONTWRAP,
             name="Celebrity Blacklist Text Area"
         )
-        self.text_ctrl.SetToolTip(tr("BLACKLIST_TIP_TEXT"))
+        make_accessible_control(self.text_ctrl, lambda: tr("BLACKLIST_TITLE"), lambda: tr("BLACKLIST_TIP_TEXT"))
         initial_text = "\n".join(sorted(self.processor.celebrity_blacklist, key=str.lower))
         self.text_ctrl.SetValue(initial_text)
         main_sizer.Add(self.text_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
@@ -211,7 +294,7 @@ class CloudApiDialog(wx.Dialog):
             style=wx.TE_PASSWORD,
             name="Cloud API Token Input"
         )
-        self.token_ctrl.SetToolTip(tr("CLOUD_API_TIP_TOKEN"))
+        make_accessible_control(self.token_ctrl, lambda: tr("CLOUD_API_TOKEN_LBL"), lambda: tr("CLOUD_API_TIP_TOKEN"))
         grid.Add(self.token_ctrl, 0, wx.EXPAND)
 
         # Endpoint URL
@@ -224,7 +307,7 @@ class CloudApiDialog(wx.Dialog):
             value=self.config.endpoint_url,
             name="Cloud Endpoint URL Input"
         )
-        self.url_ctrl.SetToolTip(tr("CLOUD_API_TIP_URL"))
+        make_accessible_control(self.url_ctrl, lambda: tr("CLOUD_API_URL_LBL"), lambda: tr("CLOUD_API_TIP_URL"))
         grid.Add(self.url_ctrl, 0, wx.EXPAND)
 
         # Timeout Spin
@@ -239,6 +322,7 @@ class CloudApiDialog(wx.Dialog):
             max=600,
             name="Remote Job Timeout in Seconds"
         )
+        make_accessible_control(self.timeout_spin, lambda: tr("CLOUD_API_TIMEOUT_LBL"))
         grid.Add(self.timeout_spin, 0, wx.EXPAND)
 
         main_sizer.Add(grid, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
@@ -285,7 +369,6 @@ class LyricsCloudDialog(wx.Dialog):
             size=(560, 420)
         )
         self.SetName("Lyrics Cloud LLM Settings Dialog")
-        from config_manager import GhostWaveConfig
         self.config = GhostWaveConfig.load()
 
         panel = wx.Panel(self, style=wx.TAB_TRAVERSAL)
@@ -332,7 +415,7 @@ class LyricsCloudDialog(wx.Dialog):
             style=wx.TE_PASSWORD,
             name="Lyrics API Token Input"
         )
-        self.token_ctrl.SetToolTip(tr("LYRICS_CLOUD_TIP_TOKEN"))
+        make_accessible_control(self.token_ctrl, lambda: tr("LYRICS_CLOUD_TOKEN_LBL"), lambda: tr("LYRICS_CLOUD_TIP_TOKEN"))
         grid.Add(self.token_ctrl, 0, wx.EXPAND)
 
         mod_label = wx.StaticText(panel, label=tr("LYRICS_CLOUD_MODEL_LBL"))
@@ -344,7 +427,7 @@ class LyricsCloudDialog(wx.Dialog):
             value=self.config.lyrics_cloud_model or "llama-3.3-70b-versatile",
             name="Model Identifier Input"
         )
-        self.model_ctrl.SetToolTip(tr("LYRICS_CLOUD_TIP_MODEL"))
+        make_accessible_control(self.model_ctrl, lambda: tr("LYRICS_CLOUD_MODEL_LBL"), lambda: tr("LYRICS_CLOUD_TIP_MODEL"))
         grid.Add(self.model_ctrl, 0, wx.EXPAND)
 
         url_label = wx.StaticText(panel, label=tr("LYRICS_CLOUD_URL_LBL"))
@@ -356,7 +439,7 @@ class LyricsCloudDialog(wx.Dialog):
             value=self.config.lyrics_cloud_endpoint_url,
             name="Lyrics Endpoint URL Input"
         )
-        self.url_ctrl.SetToolTip(tr("LYRICS_CLOUD_TIP_URL"))
+        make_accessible_control(self.url_ctrl, lambda: tr("LYRICS_CLOUD_URL_LBL"), lambda: tr("LYRICS_CLOUD_TIP_URL"))
         grid.Add(self.url_ctrl, 0, wx.EXPAND)
 
         main_sizer.Add(grid, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
@@ -419,6 +502,11 @@ class EvasionAuditDialog(wx.Dialog):
             style=wx.TE_MULTILINE | wx.TE_READONLY,
             name="Audit Details Report Text"
         )
+        make_accessible_control(
+            report_ctrl,
+            lambda: tr("AUDIT_REPORT_NAME"),
+            lambda: tr("AUDIT_REPORT_NAME")
+        )
 
         sim = metrics.get("similarity_pct", 0.0)
         verdict = metrics.get("verdict", "Unknown")
@@ -467,17 +555,823 @@ class EvasionAuditDialog(wx.Dialog):
                 "3. Exported files have all ID3 chunks, RIFF tags, and metadata completely stripped."
             ]
         report_ctrl.SetValue("\n".join(lines))
+        self.report_ctrl = report_ctrl
         main_sizer.Add(report_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
+        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.copy_btn = wx.Button(panel, label=tr("AUDIO_BTN_COPY_AUDIT"), name="Copy Audit Report Button")
+        self.copy_btn.Bind(wx.EVT_BUTTON, self.on_copy)
+        btn_sizer.Add(self.copy_btn, 0, wx.RIGHT, 8)
+        btn_sizer.AddStretchSpacer()
 
         ok_btn = wx.Button(panel, wx.ID_OK, label=tr("AUDIT_BTN_CLOSE"), name="Close Audit Button")
         ok_btn.SetDefault()
-        main_sizer.Add(ok_btn, 0, wx.ALIGN_RIGHT | wx.RIGHT | wx.BOTTOM, 10)
+        btn_sizer.Add(ok_btn, 0)
+        main_sizer.Add(btn_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         panel.SetSizer(main_sizer)
         dlg_sizer = wx.BoxSizer(wx.VERTICAL)
         dlg_sizer.Add(panel, 1, wx.EXPAND)
         self.SetSizer(dlg_sizer)
         self.CentreOnParent()
+        self.Bind(wx.EVT_CHAR_HOOK, self.on_key_hook)
+
+    def on_copy(self, event: wx.CommandEvent):
+        if wx.TheClipboard.Open():
+            try:
+                wx.TheClipboard.SetData(wx.TextDataObject(self.report_ctrl.GetValue()))
+                wx.Bell()
+            finally:
+                wx.TheClipboard.Close()
+
+    def on_key_hook(self, event: wx.KeyEvent):
+        if event.GetKeyCode() == wx.WXK_ESCAPE:
+            self.EndModal(wx.ID_CANCEL)
+        else:
+            event.Skip()
+
+
+class AudioVisualizerPanel(wx.Panel):
+    """
+    Accessible Dual-Waveform & STFT Decoy Peak Visualizer.
+    Renders original audio vs sanitized audio and real envelope-delta peaks
+    with a live screen-reader metric summary.
+    """
+
+    def __init__(self, parent: wx.Window, size=(-1, 105)):
+        super().__init__(parent, size=size, style=wx.FULL_REPAINT_ON_RESIZE)
+        self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
+        self.orig_wave: Optional[np.ndarray] = None
+        self.sani_wave: Optional[np.ndarray] = None
+        self.decoy_peaks: list[tuple[float, float]] = []
+        self.orig_peak: float = 0.0
+        self.orig_rms_db: float = -96.0
+        self.sani_rms_db: float = -96.0
+        self.SetName(self.get_accessible_summary())
+
+        self.Bind(wx.EVT_PAINT, self.on_paint)
+        self.Bind(wx.EVT_SIZE, self.on_size)
+
+    def get_accessible_summary(self) -> str:
+        """Returns a localized text summary of the loaded waveforms for screen readers."""
+        if self.orig_wave is None and self.sani_wave is None:
+            return tr("AUDIO_VIS_SUMMARY_EMPTY")
+        if self.sani_wave is None:
+            return tr("AUDIO_VIS_SUMMARY_ORIG", peak=self.orig_peak, rms_db=self.orig_rms_db)
+        return tr(
+            "AUDIO_VIS_SUMMARY_BOTH",
+            orig_db=self.orig_rms_db,
+            sani_db=self.sani_rms_db,
+            peaks=len(self.decoy_peaks),
+        )
+
+    def _downsample_envelope(self, mono: np.ndarray, pts: int = 240) -> np.ndarray:
+        if len(mono) >= pts:
+            step = len(mono) // pts
+            env = np.abs(mono[:step * pts].reshape(pts, step)).max(axis=1)
+        elif len(mono) > 0:
+            x_old = np.linspace(0.0, 1.0, len(mono))
+            x_new = np.linspace(0.0, 1.0, pts)
+            env = np.interp(x_new, x_old, np.abs(mono)).astype(np.float32)
+        else:
+            env = np.zeros(pts, dtype=np.float32)
+        mx = float(np.max(env))
+        if mx > 1e-6:
+            env = env / mx
+        return env.astype(np.float32)
+
+    def on_size(self, event: wx.SizeEvent):
+        self.Refresh()
+        event.Skip()
+
+    def set_original_audio(self, audio_input):
+        try:
+            if isinstance(audio_input, str) and os.path.exists(audio_input):
+                data, _ = load_audio_samples(audio_input, target_sr=44100)
+            elif isinstance(audio_input, np.ndarray):
+                data = audio_input
+            else:
+                return
+            mono = np.mean(data, axis=1) if data.ndim > 1 else data
+            self.orig_peak = float(np.max(np.abs(mono))) if len(mono) else 0.0
+            rms = float(np.sqrt(np.mean(mono ** 2))) if len(mono) else 0.0
+            self.orig_rms_db = max(-96.0, float(20.0 * np.log10(rms + 1e-9)))
+            self.orig_wave = self._downsample_envelope(mono, pts=240)
+            self.sani_wave = None
+            self.decoy_peaks = []
+            self.SetName(self.get_accessible_summary())
+            self.Refresh()
+        except Exception:
+            pass
+
+    def set_sanitized_audio(self, audio_input):
+        try:
+            if isinstance(audio_input, str) and os.path.exists(audio_input):
+                data, _ = load_audio_samples(audio_input, target_sr=44100)
+            elif isinstance(audio_input, np.ndarray):
+                data = audio_input
+            else:
+                return
+            mono = np.mean(data, axis=1) if data.ndim > 1 else data
+            rms = float(np.sqrt(np.mean(mono ** 2))) if len(mono) else 0.0
+            self.sani_rms_db = max(-96.0, float(20.0 * np.log10(rms + 1e-9)))
+            self.sani_wave = self._downsample_envelope(mono, pts=240)
+
+            # Derive decoy peak markers from real envelope delta between sanitized and original audio
+            pts = len(self.sani_wave)
+            if self.orig_wave is not None and len(self.orig_wave) == pts:
+                delta_env = np.abs(self.sani_wave - self.orig_wave)
+            else:
+                delta_env = self.sani_wave
+            order = np.argsort(delta_env)[::-1]
+            selected: list[int] = []
+            for idx in order:
+                idx_i = int(idx)
+                if 4 <= idx_i <= pts - 5 and all(abs(idx_i - s) >= 8 for s in selected):
+                    selected.append(idx_i)
+                    if len(selected) >= 14:
+                        break
+            self.decoy_peaks = [
+                (
+                    float(idx_i) / float(max(1, pts - 1)),
+                    0.5 - (0.38 * float(self.sani_wave[idx_i])) if (k % 2 == 0) else 0.5 + (0.38 * float(self.sani_wave[idx_i]))
+                )
+                for k, idx_i in enumerate(sorted(selected))
+            ]
+            self.SetName(self.get_accessible_summary())
+            self.Refresh()
+        except Exception:
+            pass
+
+    def clear(self):
+        self.orig_wave = None
+        self.sani_wave = None
+        self.decoy_peaks = []
+        self.orig_peak = 0.0
+        self.orig_rms_db = -96.0
+        self.sani_rms_db = -96.0
+        self.SetName(self.get_accessible_summary())
+        self.Refresh()
+
+    def on_paint(self, event: wx.PaintEvent):
+        dc = wx.AutoBufferedPaintDC(self)
+        w, h = self.GetClientSize()
+        if w < 10 or h < 10:
+            return
+
+        dc.SetBackground(wx.Brush(wx.Colour(20, 24, 30)))
+        dc.Clear()
+
+        # Grid lines
+        dc.SetPen(wx.Pen(wx.Colour(34, 40, 50), 1, wx.PENSTYLE_SOLID))
+        mid_y = h // 2
+        dc.DrawLine(0, mid_y, w, mid_y)
+        for i in range(1, 5):
+            x = int(w * i / 5)
+            dc.DrawLine(x, 0, x, h)
+
+        if self.orig_wave is None and self.sani_wave is None:
+            dc.SetTextForeground(wx.Colour(195, 205, 220))
+            font = dc.GetFont()
+            font.SetPointSize(9)
+            dc.SetFont(font)
+            msg = tr("VISUALIZER_PROMPT_EMPTY")
+            tw, th = dc.GetTextExtent(msg)
+            dc.DrawText(msg, max(10, (w - tw) // 2), max(5, (h - th) // 2))
+            return
+
+        # Original waveform in accessible blue
+        if self.orig_wave is not None and len(self.orig_wave) > 1:
+            dc.SetPen(wx.Pen(wx.Colour(96, 165, 250), 1))
+            n = len(self.orig_wave)
+            pts = []
+            for i, val in enumerate(self.orig_wave):
+                x = int((i / (n - 1)) * w)
+                amp = int(val * (h * 0.40))
+                pts.append((x, mid_y - amp))
+            for i in range(len(pts) - 1):
+                dc.DrawLine(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1])
+                dc.DrawLine(pts[i][0], mid_y + (mid_y - pts[i][1]), pts[i + 1][0], mid_y + (mid_y - pts[i + 1][1]))
+
+        # Sanitized waveform in accessible emerald green
+        if self.sani_wave is not None and len(self.sani_wave) > 1:
+            dc.SetPen(wx.Pen(wx.Colour(52, 211, 153), 2))
+            n = len(self.sani_wave)
+            pts = []
+            for i, val in enumerate(self.sani_wave):
+                x = int((i / (n - 1)) * w)
+                amp = int(val * (h * 0.40))
+                pts.append((x, mid_y - amp))
+            for i in range(len(pts) - 1):
+                dc.DrawLine(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1])
+                dc.DrawLine(pts[i][0], mid_y + (mid_y - pts[i][1]), pts[i + 1][0], mid_y + (mid_y - pts[i + 1][1]))
+
+        # Real delta peaks (amber dots)
+        if self.decoy_peaks:
+            dc.SetBrush(wx.Brush(wx.Colour(251, 191, 36)))
+            dc.SetPen(wx.Pen(wx.Colour(255, 215, 0), 1))
+            for x_norm, y_norm in self.decoy_peaks:
+                px = int(x_norm * w)
+                py = int(y_norm * h)
+                dc.DrawCircle(px, py, 3)
+
+        # Legend
+        dc.SetTextForeground(wx.Colour(220, 228, 240))
+        font = dc.GetFont()
+        font.SetPointSize(8)
+        dc.SetFont(font)
+        legend = tr("VISUALIZER_LEGEND")
+        dc.DrawText(legend, 10, 6)
+
+
+class PreFlightEvasionDialog(wx.Dialog):
+    """
+    Accessible Pre-Flight Evasion Simulator Dialog.
+    Audits CQT Chroma similarity, landmark constellation overlap,
+    SynthID / AudioSeal watermark neutralization, and overall safety rating.
+    """
+
+    def __init__(self, parent: wx.Window, orig_file: str, sani_file: str, processor: AudioProcessor):
+        super().__init__(
+            parent,
+            title=tr("PREFLIGHT_DIALOG_TITLE"),
+            style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
+            size=(600, 520)
+        )
+        self.SetName("Pre-Flight Evasion Simulator Dialog")
+        self.orig_file = orig_file
+        self.sani_file = sani_file
+
+        panel = wx.Panel(self, style=wx.TAB_TRAVERSAL)
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        if isinstance(processor, dict):
+            self.processor = None
+            self.report = processor
+        else:
+            if processor is None:
+                self.processor = AudioProcessor()
+            else:
+                self.processor = processor
+            self.report = self.processor.simulate_preflight(orig_file, sani_file)
+        score = self.report.get("safety_score", 85)
+        is_id = (get_language() == "id")
+        verdict = self.report.get("verdict" if is_id else "verdict_en", self.report.get("verdict", "Lolos Aman" if is_id else "High Evasion"))
+
+        # WCAG AA/AAA verified background fills paired with #FFFFFF text
+        badge_pnl = wx.Panel(panel)
+        badge_sizer = wx.BoxSizer(wx.VERTICAL)
+        badge_color = wx.Colour(4, 108, 78) if score >= 75 else (wx.Colour(146, 64, 14) if score >= 50 else wx.Colour(185, 28, 28))
+        badge_pnl.SetBackgroundColour(badge_color)
+
+        score_text = (
+            f"  SKOR KEAMANAN LOLOS AI: {score}% ({verdict.upper()})  "
+            if is_id
+            else f"  AI EVASION SAFETY SCORE: {score}% ({verdict.upper()})  "
+        )
+        badge_label = wx.StaticText(badge_pnl, label=score_text)
+        badge_label.SetForegroundColour(wx.Colour(255, 255, 255))
+        font = badge_label.GetFont()
+        font.SetPointSize(11)
+        font.SetWeight(wx.FONTWEIGHT_BOLD)
+        badge_label.SetFont(font)
+        badge_sizer.Add(badge_label, 0, wx.ALL | wx.ALIGN_CENTER, 8)
+        badge_pnl.SetSizer(badge_sizer)
+        main_sizer.Add(badge_pnl, 0, wx.EXPAND | wx.ALL, 10)
+
+        self.report_ctrl = wx.TextCtrl(
+            panel,
+            style=wx.TE_MULTILINE | wx.TE_READONLY,
+            name="Pre-Flight Evasion Report Text"
+        )
+        make_accessible_control(self.report_ctrl, lambda: tr("PREFLIGHT_DIALOG_TITLE"))
+        cqt_sim = self.report.get("cqt_chroma_similarity_pct", 0.0)
+        lm_sim = self.report.get("landmark_overlap_pct", 0.0)
+        wm_status = self.report.get("synthid_watermark_neutralized", False)
+        voc_drop = self.report.get("vocal_isolation_db", 0.0)
+        advice = self.report.get("actionable_advice" if is_id else "actionable_advice_en", self.report.get("actionable_advice", ""))
+
+        if score >= 75:
+            user_note = (
+                "Komponen sidik jari rasi frekuensi dan harmoni sudah teracak baik sehingga siap diuji unggah."
+                if is_id
+                else "Constellation peaks and harmonic profiles are well decoupled for upload testing."
+            )
+        elif score >= 50:
+            user_note = (
+                "Kemiripan menurun sebagian. Disarankan memotong audio menjadi klip 22 detik lewat Audio Slicer."
+                if is_id
+                else "Similarity is partially reduced. Slicing into 22-second clips via Audio Slicer is recommended."
+            )
+        else:
+            user_note = (
+                "Skor keamanan masih rendah. Naikkan pergeseran nada atau aktifkan mode Instrumental sebelum mengunggah."
+                if is_id
+                else "Safety score is still low. Increase pitch shift or enable stronger vocal reduction before uploading."
+            )
+
+        lines = [
+            f"Berkas Asli: {os.path.basename(orig_file)}" if is_id else f"Original File: {os.path.basename(orig_file)}",
+            f"Berkas Hasil: {os.path.basename(sani_file)}" if is_id else f"Sanitized File: {os.path.basename(sani_file)}",
+            "=" * 50,
+            "HASIL AUDIT MULTI-VEKTOR SISTEM DETEKSI:" if is_id else "MULTI-VECTOR DETECTION SYSTEM AUDIT:",
+            f"• Kemiripan Melodi CQT Chroma: {cqt_sim:.1f}% (Batas Aman: < 35%)" if is_id else f"• CQT Chroma Melody Similarity: {cqt_sim:.1f}% (Target: < 35%)",
+            f"• Tumpang Tindih Landmark Akustik: {lm_sim:.1f}% (Batas Aman: < 15%)" if is_id else f"• Acoustic Landmark Overlap: {lm_sim:.1f}% (Target: < 15%)",
+            f"• Watermark AI (SynthID / AudioSeal): {'Dinetralkan & Terpencar' if wm_status else 'Belum Terdeteksi Perubahan'}" if is_id else f"• AI Watermark (SynthID / AudioSeal): {'Neutralized & Diffused' if wm_status else 'No Phase Dispersion Detected'}",
+            f"• Pelemahan Karakter Vokal Tengah: {voc_drop:.1f} dB" if is_id else f"• Center Vocal Attenuation: {voc_drop:.1f} dB",
+            "",
+            "KESIMPULAN & SARAN TINDAKAN:" if is_id else "VERDICT & ACTIONABLE ADVICE:",
+            f"{advice}",
+            "",
+            "CATATAN PENGGUNA:" if is_id else "USER NOTE:",
+            user_note,
+        ]
+        self.report_ctrl.SetValue("\n".join(lines))
+        main_sizer.Add(self.report_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
+        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.copy_btn = wx.Button(panel, label=tr("PREFLIGHT_BTN_COPY"), name="Copy Pre-Flight Report Button")
+        self.copy_btn.Bind(wx.EVT_BUTTON, self.on_copy)
+        btn_sizer.Add(self.copy_btn, 0, wx.RIGHT, 8)
+        btn_sizer.AddStretchSpacer()
+
+        ok_btn = wx.Button(panel, wx.ID_OK, label=tr("AUDIT_BTN_CLOSE"), name="Close Preflight Dialog Button")
+        ok_btn.SetDefault()
+        btn_sizer.Add(ok_btn, 0)
+        main_sizer.Add(btn_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
+        panel.SetSizer(main_sizer)
+        dlg_sizer = wx.BoxSizer(wx.VERTICAL)
+        dlg_sizer.Add(panel, 1, wx.EXPAND)
+        self.SetSizer(dlg_sizer)
+        self.CentreOnParent()
+        self.Bind(wx.EVT_CHAR_HOOK, self.on_key_hook)
+
+    def on_copy(self, event: wx.CommandEvent):
+        if wx.TheClipboard.Open():
+            try:
+                wx.TheClipboard.SetData(wx.TextDataObject(self.report_ctrl.GetValue()))
+                wx.Bell()
+            finally:
+                wx.TheClipboard.Close()
+
+    def on_key_hook(self, event: wx.KeyEvent):
+        if event.GetKeyCode() == wx.WXK_ESCAPE:
+            self.EndModal(wx.ID_CANCEL)
+        else:
+            event.Skip()
+
+
+class BatchProcessingDialog(wx.Dialog):
+    """
+    Accessible Batch Processing and Folder Watcher Automator Dialog.
+    Processes audio queues and monitors incoming folders for hands-free workflow.
+    """
+
+    def __init__(self, parent: wx.Window, audio_processor: AudioProcessor, get_options_fn):
+        super().__init__(
+            parent,
+            title=tr("BATCH_DIALOG_TITLE"),
+            style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
+            size=(700, 560)
+        )
+        self.SetName("Batch Processing and Folder Watcher Dialog")
+        self.processor = audio_processor
+        self.get_options_fn = get_options_fn
+        self.batch_processor = BatchProcessor(audio_processor)
+        self.folder_watcher: Optional[FolderWatcher] = None
+        self.tasks: list[BatchTask] = []
+        self.is_processing = False
+
+        self._build_ui()
+        self.Bind(wx.EVT_CLOSE, self.on_close_dialog)
+        self.Bind(wx.EVT_CHAR_HOOK, self.on_key_hook)
+
+    def _cleanup_workers(self):
+        if self.is_processing:
+            self.batch_processor.cancel()
+        if self.folder_watcher and self.folder_watcher.is_running:
+            self.folder_watcher.stop()
+            self.folder_watcher = None
+
+    def on_close_dialog(self, event: wx.CloseEvent):
+        self._cleanup_workers()
+        event.Skip()
+
+    def on_key_hook(self, event: wx.KeyEvent):
+        if event.GetKeyCode() == wx.WXK_ESCAPE:
+            self._cleanup_workers()
+            self.EndModal(wx.ID_CANCEL)
+        else:
+            event.Skip()
+
+    def _build_ui(self):
+        panel = wx.Panel(self, style=wx.TAB_TRAVERSAL)
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        notebook = wx.Notebook(panel, style=wx.NB_TOP | wx.TAB_TRAVERSAL)
+
+        # ---------------- Tab 1: Queue Manager ----------------
+        queue_pnl = wx.Panel(notebook)
+        q_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        tb_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.add_files_btn = wx.Button(queue_pnl, label=tr("BATCH_BTN_ADD_FILES"), name="Add Files to Batch")
+        self.add_files_btn.Bind(wx.EVT_BUTTON, self.on_add_files)
+        tb_sizer.Add(self.add_files_btn, 0, wx.RIGHT, 6)
+
+        self.add_folder_btn = wx.Button(queue_pnl, label=tr("BATCH_BTN_ADD_FOLDER"), name="Add Folder to Batch")
+        self.add_folder_btn.Bind(wx.EVT_BUTTON, self.on_add_folder)
+        tb_sizer.Add(self.add_folder_btn, 0, wx.RIGHT, 6)
+
+        self.remove_btn = wx.Button(queue_pnl, label=tr("BATCH_BTN_REMOVE"), name="Remove Selected Item")
+        self.remove_btn.Bind(wx.EVT_BUTTON, self.on_remove_item)
+        tb_sizer.Add(self.remove_btn, 0, wx.RIGHT, 6)
+
+        self.clear_btn = wx.Button(queue_pnl, label=tr("BATCH_BTN_CLEAR"), name="Clear All Items")
+        self.clear_btn.Bind(wx.EVT_BUTTON, self.on_clear_items)
+        tb_sizer.Add(self.clear_btn, 0)
+        q_sizer.Add(tb_sizer, 0, wx.EXPAND | wx.ALL, 8)
+
+        self.list_ctrl = wx.ListCtrl(queue_pnl, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
+        self.list_ctrl.SetName("Batch Processing File Queue List")
+        self.list_ctrl.InsertColumn(0, tr("BATCH_COL_NO"), width=45)
+        self.list_ctrl.InsertColumn(1, tr("BATCH_COL_FILENAME"), width=340)
+        self.list_ctrl.InsertColumn(2, tr("BATCH_COL_STATUS"), width=120)
+        self.list_ctrl.InsertColumn(3, tr("BATCH_COL_PROGRESS"), width=90)
+        q_sizer.Add(self.list_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+
+        opt_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.auto_slice_chk = wx.CheckBox(queue_pnl, label=tr("BATCH_CHK_AUTO_SLICE"))
+        self.auto_slice_chk.SetValue(False)
+        opt_sizer.Add(self.auto_slice_chk, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
+
+        self.slice_sec_spin = wx.SpinCtrlDouble(queue_pnl, value="24.0", min=5.0, max=60.0, inc=1.0)
+        self.slice_sec_spin.SetDigits(1)
+        make_accessible_control(self.slice_sec_spin, lambda: tr("SLICER_CHUNK_LBL"), lambda: tr("SLICER_TIP_CHUNK"))
+        opt_sizer.Add(self.slice_sec_spin, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        opt_sizer.Add(wx.StaticText(queue_pnl, label=tr("AUDIO_UNIT_SECONDS")), 0, wx.ALIGN_CENTER_VERTICAL)
+        q_sizer.Add(opt_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+
+        act_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.start_btn = wx.Button(queue_pnl, label=tr("BATCH_BTN_START"), name="Start Batch Processing")
+        self.start_btn.Bind(wx.EVT_BUTTON, self.on_start_batch)
+        act_sizer.Add(self.start_btn, 0, wx.RIGHT, 8)
+
+        self.cancel_btn = wx.Button(queue_pnl, label=tr("BATCH_BTN_CANCEL"), name="Cancel Batch Processing")
+        self.cancel_btn.Bind(wx.EVT_BUTTON, self.on_cancel_batch)
+        self.cancel_btn.Enable(False)
+        act_sizer.Add(self.cancel_btn, 0, wx.RIGHT, 10)
+
+        self.gauge = wx.Gauge(queue_pnl, range=100)
+        self.gauge.SetName("Batch Queue Overall Progress Gauge")
+        act_sizer.Add(self.gauge, 1, wx.ALIGN_CENTER_VERTICAL)
+        q_sizer.Add(act_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+
+        queue_pnl.SetSizer(q_sizer)
+        notebook.AddPage(queue_pnl, tr("BATCH_QUEUE_TAB"), select=True)
+
+        # ---------------- Tab 2: Folder Watcher ----------------
+        watch_pnl = wx.Panel(notebook)
+        w_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        info_lbl = wx.StaticText(
+            watch_pnl,
+            label=tr("BATCH_WATCHER_INFO")
+        )
+        w_sizer.Add(info_lbl, 0, wx.ALL, 10)
+
+        in_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        in_sizer.Add(wx.StaticText(watch_pnl, label=tr("BATCH_WATCH_IN_LABEL")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        self.watch_in_ctrl = wx.TextCtrl(watch_pnl, style=wx.TE_READONLY)
+        make_accessible_control(self.watch_in_ctrl, lambda: tr("BATCH_WATCH_IN_LABEL"))
+        in_sizer.Add(self.watch_in_ctrl, 1, wx.EXPAND | wx.RIGHT, 8)
+        self.pick_in_btn = wx.Button(watch_pnl, label=tr("BATCH_BTN_BROWSE"), name="Browse Watch Input Directory")
+        self.pick_in_btn.Bind(wx.EVT_BUTTON, self.on_pick_watch_in)
+        in_sizer.Add(self.pick_in_btn, 0)
+        w_sizer.Add(in_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+
+        out_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        out_sizer.Add(wx.StaticText(watch_pnl, label=tr("BATCH_WATCH_OUT_LABEL")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        self.watch_out_ctrl = wx.TextCtrl(watch_pnl, style=wx.TE_READONLY)
+        make_accessible_control(self.watch_out_ctrl, lambda: tr("BATCH_WATCH_OUT_LABEL"))
+        out_sizer.Add(self.watch_out_ctrl, 1, wx.EXPAND | wx.RIGHT, 8)
+        self.pick_out_btn = wx.Button(watch_pnl, label=tr("BATCH_BTN_BROWSE"), name="Browse Watch Output Directory")
+        self.pick_out_btn.Bind(wx.EVT_BUTTON, self.on_pick_watch_out)
+        out_sizer.Add(self.pick_out_btn, 0)
+        w_sizer.Add(out_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+
+        w_act_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.toggle_watch_btn = wx.Button(watch_pnl, label=tr("BATCH_BTN_START_WATCH"), name="Toggle Folder Watcher Button")
+        self.toggle_watch_btn.Bind(wx.EVT_BUTTON, self.on_toggle_watcher)
+        w_act_sizer.Add(self.toggle_watch_btn, 0, wx.RIGHT, 10)
+
+        self.watcher_status_lbl = wx.StaticText(watch_pnl, label=tr("BATCH_WATCHER_STATUS_IDLE"))
+        w_act_sizer.Add(self.watcher_status_lbl, 0, wx.ALIGN_CENTER_VERTICAL)
+        w_sizer.Add(w_act_sizer, 0, wx.EXPAND | wx.ALL, 10)
+
+        watch_pnl.SetSizer(w_sizer)
+        notebook.AddPage(watch_pnl, tr("BATCH_WATCHER_TAB"), select=False)
+
+        main_sizer.Add(notebook, 1, wx.EXPAND | wx.ALL, 8)
+
+        close_btn = wx.Button(panel, wx.ID_CANCEL, label=tr("AUDIT_BTN_CLOSE"), name="Close Batch Dialog Button")
+        main_sizer.Add(close_btn, 0, wx.ALIGN_RIGHT | wx.RIGHT | wx.BOTTOM, 10)
+
+        panel.SetSizer(main_sizer)
+        dlg_sizer = wx.BoxSizer(wx.VERTICAL)
+        dlg_sizer.Add(panel, 1, wx.EXPAND)
+        self.SetSizer(dlg_sizer)
+        self.CentreOnParent()
+
+    def on_add_files(self, event: wx.CommandEvent):
+        wildcard = "Audio Files (*.wav;*.mp3;*.flac;*.m4a;*.ogg)|*.wav;*.mp3;*.flac;*.m4a;*.ogg|All Files (*.*)|*.*"
+        with wx.FileDialog(self, tr("AUDIO_DIALOG_TITLE"), wildcard=wildcard, style=wx.FD_OPEN | wx.FD_MULTIPLE | wx.FD_FILE_MUST_EXIST) as dlg:
+            if dlg.ShowModal() == wx.ID_OK:
+                paths = dlg.GetPaths()
+                for p in paths:
+                    self._add_task_path(p)
+
+    def on_add_folder(self, event: wx.CommandEvent):
+        with wx.DirDialog(self, tr("BATCH_PICK_FOLDER_TITLE"), style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST) as dlg:
+            if dlg.ShowModal() == wx.ID_OK:
+                d = dlg.GetPath()
+                exts = {".wav", ".mp3", ".flac", ".m4a", ".ogg"}
+                for entry in sorted(os.scandir(d), key=lambda e: e.name.lower()):
+                    if entry.is_file() and os.path.splitext(entry.name)[1].lower() in exts:
+                        self._add_task_path(entry.path)
+
+    def _add_task_path(self, in_path: str):
+        stem, _ = os.path.splitext(in_path)
+        options = self.get_options_fn()
+        out_ext = ".mp3" if getattr(options, "output_bitrate", "wav") in ("320k", "192k") else ".wav"
+        out_path = f"{stem}_ghostwave_ready{out_ext}"
+        task = BatchTask(in_path, out_path)
+        self.tasks.append(task)
+        idx = self.list_ctrl.GetItemCount()
+        self.list_ctrl.InsertItem(idx, str(idx + 1))
+        self.list_ctrl.SetItem(idx, 1, os.path.basename(in_path))
+        self.list_ctrl.SetItem(idx, 2, tr("STATUS_BATCH_WAITING"))
+        self.list_ctrl.SetItem(idx, 3, "0%")
+
+    def on_remove_item(self, event: wx.CommandEvent):
+        sel = self.list_ctrl.GetFirstSelected()
+        if sel != -1 and sel < len(self.tasks):
+            self.tasks.pop(sel)
+            self.list_ctrl.DeleteItem(sel)
+            for i in range(self.list_ctrl.GetItemCount()):
+                self.list_ctrl.SetItem(i, 0, str(i + 1))
+
+    def on_clear_items(self, event: wx.CommandEvent):
+        if not self.is_processing:
+            self.tasks.clear()
+            self.list_ctrl.DeleteAllItems()
+
+    def on_start_batch(self, event: wx.CommandEvent):
+        if not self.tasks or self.is_processing:
+            return
+        self.is_processing = True
+        self.start_btn.Enable(False)
+        self.cancel_btn.Enable(True)
+        self.add_files_btn.Enable(False)
+        self.add_folder_btn.Enable(False)
+        self.remove_btn.Enable(False)
+        self.clear_btn.Enable(False)
+
+        options = self.get_options_fn()
+        out_ext = ".mp3" if getattr(options, "output_bitrate", "wav") in ("320k", "192k") else ".wav"
+        for task in self.tasks:
+            stem, _ = os.path.splitext(task.input_path)
+            task.output_path = f"{stem}_ghostwave_ready{out_ext}"
+
+        def worker():
+            def cb(idx, total, pct, msg):
+                if wx.GetApp():
+                    wx.CallAfter(self._update_task_ui, idx, total, pct, msg)
+
+            self.batch_processor.process_queue(
+                self.tasks,
+                options,
+                progress_callback=cb,
+                auto_slice=self.auto_slice_chk.IsChecked(),
+                slice_duration_sec=float(self.slice_sec_spin.GetValue())
+            )
+            if wx.GetApp():
+                wx.CallAfter(self._batch_finished)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _update_task_ui(self, idx: int, total: int, pct: int, msg: str):
+        try:
+            if not self or self.IsBeingDeleted():
+                return
+            if 0 <= idx < self.list_ctrl.GetItemCount():
+                self.list_ctrl.SetItem(idx, 2, msg)
+                self.list_ctrl.SetItem(idx, 3, f"{pct}%")
+            overall = int(((idx + (pct / 100.0)) / max(1, total)) * 100)
+            self.gauge.SetValue(min(100, overall))
+        except RuntimeError:
+            pass
+
+    def _batch_finished(self):
+        try:
+            if not self or self.IsBeingDeleted():
+                return
+            self.is_processing = False
+            self.start_btn.Enable(True)
+            self.cancel_btn.Enable(False)
+            self.add_files_btn.Enable(True)
+            self.add_folder_btn.Enable(True)
+            self.remove_btn.Enable(True)
+            self.clear_btn.Enable(True)
+            self.gauge.SetValue(100)
+            wx.Bell()
+            wx.MessageBox(tr("BATCH_MSG_FINISHED"), tr("BATCH_TITLE_FINISHED"), wx.OK | wx.ICON_INFORMATION, self)
+        except RuntimeError:
+            pass
+
+    def on_cancel_batch(self, event: wx.CommandEvent):
+        if self.is_processing:
+            self.batch_processor.cancel()
+            self.cancel_btn.Enable(False)
+
+    def on_pick_watch_in(self, event: wx.CommandEvent):
+        with wx.DirDialog(self, tr("BATCH_WATCH_IN_LABEL"), style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST) as dlg:
+            if dlg.ShowModal() == wx.ID_OK:
+                self.watch_in_ctrl.SetValue(dlg.GetPath())
+
+    def on_pick_watch_out(self, event: wx.CommandEvent):
+        with wx.DirDialog(self, tr("BATCH_WATCH_OUT_LABEL"), style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST) as dlg:
+            if dlg.ShowModal() == wx.ID_OK:
+                self.watch_out_ctrl.SetValue(dlg.GetPath())
+
+    def on_toggle_watcher(self, event: wx.CommandEvent):
+        if self.folder_watcher and self.folder_watcher.is_running:
+            self.folder_watcher.stop()
+            self.folder_watcher = None
+            self.toggle_watch_btn.SetLabel(tr("BATCH_BTN_START_WATCH"))
+            self.watcher_status_lbl.SetLabel(tr("BATCH_WATCHER_STATUS_IDLE"))
+            return
+
+        in_d = self.watch_in_ctrl.GetValue().strip()
+        out_d = self.watch_out_ctrl.GetValue().strip()
+        if not in_d or not os.path.exists(in_d) or not out_d:
+            wx.MessageBox(tr("BATCH_MSG_PICK_DIRS"), tr("AUDIT_WARN_TITLE"), wx.OK | wx.ICON_WARNING, self)
+            return
+
+        options = self.get_options_fn()
+        self.folder_watcher = FolderWatcher(
+            input_dir=in_d,
+            output_dir=out_d,
+            audio_processor=self.processor,
+            options=options,
+            poll_interval_sec=2.0
+        )
+        self.folder_watcher.start()
+        self.toggle_watch_btn.SetLabel(tr("BATCH_BTN_STOP_WATCH"))
+        self.watcher_status_lbl.SetLabel(tr("BATCH_WATCHER_STATUS_RUNNING", in_dir=os.path.basename(in_d)))
+
+
+class SunoPromptDialog(wx.Dialog):
+    """
+    Accessible Dialog to generate optimized Suno v4-v6 & Udio meta-prompts
+    and structural section tags.
+    """
+
+    def __init__(self, parent: wx.Window, target_text_ctrl: wx.TextCtrl, detected_bpm=None, detected_key=None):
+        super().__init__(
+            parent,
+            title=tr("SUNO_PROMPT_DIALOG_TITLE"),
+            style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
+            size=(580, 520)
+        )
+        self.SetName("Suno Style Prompt Generator Dialog")
+        self.target_text_ctrl = target_text_ctrl
+
+        panel = wx.Panel(self, style=wx.TAB_TRAVERSAL)
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        grid = wx.FlexGridSizer(cols=2, vgap=8, hgap=12)
+        grid.AddGrowableCol(1, 1)
+
+        grid.Add(wx.StaticText(panel, label=tr("PROMPT_GENRE_LABEL")), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.genre_choice = wx.Choice(
+            panel,
+            choices=[
+                "Pop", "Electronic / EDM", "Rock / Alternative", "R&B / Soul",
+                "Hip Hop / Trap", "Lo-Fi Beats", "Acoustic / Folk", "Synthwave 80s",
+                "Cinematic Orchestral", "Indie Rock"
+            ],
+            name="Genre Choice"
+        )
+        self.genre_choice.SetSelection(0)
+        self.genre_choice.Bind(wx.EVT_CHOICE, self.on_update_preview)
+        grid.Add(self.genre_choice, 1, wx.EXPAND)
+
+        grid.Add(wx.StaticText(panel, label=tr("PROMPT_MOOD_LABEL")), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.mood_choice = wx.Choice(
+            panel,
+            choices=[
+                "Energetic & Uplifting", "Melancholic & Emotional", "Chill & Relaxed",
+                "Dark & Cinematic", "Euphoric & Festival", "Dreamy & Nostalgic"
+            ],
+            name="Mood Choice"
+        )
+        self.mood_choice.SetSelection(0)
+        self.mood_choice.Bind(wx.EVT_CHOICE, self.on_update_preview)
+        grid.Add(self.mood_choice, 1, wx.EXPAND)
+
+        grid.Add(wx.StaticText(panel, label=tr("PROMPT_TEMPO_LABEL")), 0, wx.ALIGN_CENTER_VERTICAL)
+        bpm_val = str(int(round(detected_bpm))) if detected_bpm and detected_bpm > 0 else "124"
+        self.bpm_spin = wx.SpinCtrl(panel, value=bpm_val, min=40, max=240)
+        make_accessible_control(self.bpm_spin, lambda: tr("PROMPT_TEMPO_LABEL"))
+        self.bpm_spin.Bind(wx.EVT_SPINCTRL, self.on_update_preview)
+        grid.Add(self.bpm_spin, 0)
+
+        grid.Add(wx.StaticText(panel, label=tr("PROMPT_KEY_LABEL")), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.key_ctrl = wx.TextCtrl(panel, value=detected_key or "C Major")
+        make_accessible_control(self.key_ctrl, lambda: tr("PROMPT_KEY_LABEL"))
+        self.key_ctrl.Bind(wx.EVT_TEXT, self.on_update_preview)
+        grid.Add(self.key_ctrl, 1, wx.EXPAND)
+
+        main_sizer.Add(grid, 0, wx.EXPAND | wx.ALL, 10)
+
+        prompt_box = wx.StaticBox(panel, label=tr("PROMPT_RESULT_GROUP"))
+        p_sizer = wx.StaticBoxSizer(prompt_box, wx.VERTICAL)
+        self.prompt_ctrl = wx.TextCtrl(panel, style=wx.TE_MULTILINE | wx.TE_READONLY, size=(-1, 65))
+        make_accessible_control(self.prompt_ctrl, lambda: tr("PROMPT_RESULT_GROUP"))
+        p_sizer.Add(self.prompt_ctrl, 1, wx.EXPAND | wx.ALL, 6)
+        main_sizer.Add(p_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+
+        tags_box = wx.StaticBox(panel, label=tr("PROMPT_TAGS_GROUP"))
+        t_sizer = wx.StaticBoxSizer(tags_box, wx.VERTICAL)
+        self.tags_ctrl = wx.TextCtrl(panel, style=wx.TE_MULTILINE, size=(-1, 110))
+        make_accessible_control(self.tags_ctrl, lambda: tr("PROMPT_TAGS_GROUP"))
+        t_sizer.Add(self.tags_ctrl, 1, wx.EXPAND | wx.ALL, 6)
+        main_sizer.Add(t_sizer, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+
+        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.insert_btn = wx.Button(panel, label=tr("PROMPT_BTN_INSERT"), name="Insert to Lyrics Button")
+        self.insert_btn.Bind(wx.EVT_BUTTON, self.on_insert)
+        self.insert_btn.SetDefault()
+        btn_sizer.Add(self.insert_btn, 0, wx.RIGHT, 8)
+
+        self.copy_btn = wx.Button(panel, label=tr("PROMPT_BTN_COPY"), name="Copy Prompt Button")
+        self.copy_btn.Bind(wx.EVT_BUTTON, self.on_copy)
+        btn_sizer.Add(self.copy_btn, 0, wx.RIGHT, 8)
+
+        btn_sizer.AddStretchSpacer()
+        close_btn = wx.Button(panel, wx.ID_CANCEL, label=tr("PROMPT_BTN_CLOSE"), name="Close Prompt Generator Dialog")
+        btn_sizer.Add(close_btn, 0)
+        main_sizer.Add(btn_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
+        panel.SetSizer(main_sizer)
+        dlg_sizer = wx.BoxSizer(wx.VERTICAL)
+        dlg_sizer.Add(panel, 1, wx.EXPAND)
+        self.SetSizer(dlg_sizer)
+        self.CentreOnParent()
+        self.Bind(wx.EVT_CHAR_HOOK, self.on_key_hook)
+
+        self.on_update_preview(None)
+
+    def on_key_hook(self, event: wx.KeyEvent):
+        if event.GetKeyCode() == wx.WXK_ESCAPE:
+            self.EndModal(wx.ID_CANCEL)
+        else:
+            event.Skip()
+
+    def on_update_preview(self, event):
+        genre = self.genre_choice.GetStringSelection()
+        mood = self.mood_choice.GetStringSelection().split("&")[0].strip()
+        bpm = self.bpm_spin.GetValue()
+        key = self.key_ctrl.GetValue().strip()
+
+        p_text = generate_suno_style_prompt(bpm=bpm, key=key, mood=mood, user_genre=genre)
+        parts = p_text.split("\n\n", 1)
+        style = parts[0] if parts else p_text
+        struct = parts[1] if len(parts) > 1 else ""
+        self.prompt_ctrl.SetValue(style)
+        self.tags_ctrl.SetValue(struct)
+
+    def on_insert(self, event):
+        style = self.prompt_ctrl.GetValue()
+        struct = self.tags_ctrl.GetValue()
+        header = f"// Style Prompt: {style}\n\n"
+        existing = self.target_text_ctrl.GetValue()
+        if existing.strip():
+            self.target_text_ctrl.SetValue(header + existing)
+        else:
+            self.target_text_ctrl.SetValue(header + struct + "\n")
+        self.EndModal(wx.ID_OK)
+
+    def on_copy(self, event):
+        if wx.TheClipboard.Open():
+            try:
+                wx.TheClipboard.SetData(wx.TextDataObject(self.prompt_ctrl.GetValue()))
+                wx.Bell()
+            finally:
+                wx.TheClipboard.Close()
+            wx.MessageBox(tr("PROMPT_COPY_SUCCESS"), tr("LYRICS_COPIED_TITLE"), wx.OK | wx.ICON_INFORMATION, self)
 
 
 class SunoCheatSheetDialog(wx.Dialog):
@@ -511,6 +1405,11 @@ class SunoCheatSheetDialog(wx.Dialog):
             panel,
             style=wx.TE_MULTILINE | wx.TE_READONLY,
             name="Suno Protocol Text"
+        )
+        make_accessible_control(
+            self.text_ctrl,
+            lambda: tr("SUNO_PROTOCOL_NAME"),
+            lambda: tr("SUNO_PROTOCOL_NAME")
         )
         cheat_ctrl = self.text_ctrl
 
@@ -666,7 +1565,7 @@ class AbsAudioSlicerDialog(wx.Dialog):
         fb_sizer = wx.StaticBoxSizer(file_box, wx.HORIZONTAL)
 
         self.file_path_ctrl = wx.TextCtrl(panel, style=wx.TE_READONLY, name="Slicer Audio File Path")
-        self.file_path_ctrl.SetToolTip(tr("SLICER_TIP_PATH"))
+        make_accessible_control(self.file_path_ctrl, lambda: tr("SLICER_GROUP_SOURCE"), lambda: tr("SLICER_TIP_PATH"))
         if initial_file and os.path.exists(initial_file):
             self.file_path_ctrl.SetValue(initial_file)
         else:
@@ -696,7 +1595,7 @@ class AbsAudioSlicerDialog(wx.Dialog):
             name="Chunk Duration Seconds Input"
         )
         self.chunk_spin.SetDigits(1)
-        self.chunk_spin.SetToolTip(tr("SLICER_TIP_CHUNK"))
+        make_accessible_control(self.chunk_spin, lambda: tr("SLICER_CHUNK_LBL"), lambda: tr("SLICER_TIP_CHUNK"))
         grid.Add(self.chunk_spin, 0, wx.EXPAND)
 
         out_dir_lbl = wx.StaticText(panel, label=tr("SLICER_OUT_DIR_LBL"))
@@ -705,6 +1604,7 @@ class AbsAudioSlicerDialog(wx.Dialog):
 
         out_dir_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.out_dir_ctrl = wx.TextCtrl(panel, name="Slicer Output Directory Path")
+        make_accessible_control(self.out_dir_ctrl, lambda: tr("SLICER_OUT_DIR_LBL"), lambda: tr("SLICER_TIP_OUT_DIR"))
         self.out_dir_ctrl.SetToolTip(tr("SLICER_TIP_OUT_DIR"))
         if initial_file and os.path.exists(initial_file):
             default_dir = os.path.join(os.path.dirname(initial_file), "suno_chunks")
@@ -743,6 +1643,11 @@ class AbsAudioSlicerDialog(wx.Dialog):
             name="Slicer Generation Log"
         )
         self.log_ctrl.SetToolTip(tr("SLICER_TIP_LOG"))
+        make_accessible_control(
+            self.log_ctrl,
+            lambda: tr("SLICER_TIP_LOG"),
+            lambda: tr("SLICER_TIP_LOG")
+        )
         main_sizer.Add(self.log_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         # Close button
@@ -816,7 +1721,8 @@ class AbsAudioSlicerDialog(wx.Dialog):
                             wx.OK | wx.ICON_INFORMATION,
                             self
                         )
-                wx.CallAfter(done)
+                if wx.GetApp():
+                    wx.CallAfter(done)
             except Exception as ex:
                 def fail():
                     self.gauge.SetValue(0)
@@ -1039,7 +1945,7 @@ class SupportTicketDialog(wx.Dialog):
         sizer.Add(title_lbl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
 
         self.title_ctrl = wx.TextCtrl(page, name="Ticket Title Input")
-        self.title_ctrl.SetToolTip(tr("TICKET_TIP_TITLE"))
+        make_accessible_control(self.title_ctrl, lambda: tr("TICKET_TITLE_LABEL"), lambda: tr("TICKET_TIP_TITLE"))
         sizer.Add(self.title_ctrl, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
         # Description Row
@@ -1048,7 +1954,7 @@ class SupportTicketDialog(wx.Dialog):
         sizer.Add(desc_lbl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
 
         self.desc_ctrl = wx.TextCtrl(page, style=wx.TE_MULTILINE, name="Ticket Description Input")
-        self.desc_ctrl.SetToolTip(tr("TICKET_TIP_DESC"))
+        make_accessible_control(self.desc_ctrl, lambda: tr("TICKET_DESC_LABEL"), lambda: tr("TICKET_TIP_DESC"))
         sizer.Add(self.desc_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
         # Attach Diagnostics Checkbox
@@ -1105,6 +2011,7 @@ class SupportTicketDialog(wx.Dialog):
             style=wx.TE_MULTILINE | wx.TE_READONLY,
             name="Ticket Discussion Thread Text"
         )
+        make_accessible_control(self.thread_ctrl, lambda: tr("TICKET_SELECT_PROMPT"))
         right_sizer.Add(self.thread_ctrl, 1, wx.EXPAND | wx.BOTTOM, 6)
 
         reply_lbl = wx.StaticText(page, label=tr("TICKET_REPLY_LABEL"))
@@ -1112,6 +2019,7 @@ class SupportTicketDialog(wx.Dialog):
 
         reply_box = wx.BoxSizer(wx.HORIZONTAL)
         self.reply_ctrl = wx.TextCtrl(page, name="Ticket Reply Input Box")
+        make_accessible_control(self.reply_ctrl, lambda: tr("TICKET_REPLY_LABEL"))
         reply_box.Add(self.reply_ctrl, 1, wx.EXPAND | wx.RIGHT, 6)
 
         self.reply_btn = wx.Button(page, label=tr("TICKET_REPLY_BTN"), name="Send Reply Button")
@@ -1236,7 +2144,8 @@ class SupportTicketDialog(wx.Dialog):
                 else:
                     self._render_ticket_view(err_msg=err)
 
-            wx.CallAfter(done)
+            if wx.GetApp():
+                wx.CallAfter(done)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -1305,7 +2214,8 @@ class SupportTicketDialog(wx.Dialog):
                         self
                     )
 
-            wx.CallAfter(done)
+            if wx.GetApp():
+                wx.CallAfter(done)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -1341,7 +2251,8 @@ class SupportTicketDialog(wx.Dialog):
                 else:
                     wx.MessageBox(tr("TICKET_REPLY_FAILED", error=err), "Error", wx.OK | wx.ICON_ERROR, self)
 
-            wx.CallAfter(done)
+            if wx.GetApp():
+                wx.CallAfter(done)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -1396,9 +2307,11 @@ class AccessibilityGuideDialog(wx.Dialog):
                 "Tab Audio Sanitizer (Alt+1 atau Ctrl+Tab):\n"
                 "  Alt+B: Jelajahi berkas audio masukan.\n"
                 "  Alt+P: Proses dan ekspor audio hasil sanitasi.\n"
+                "  Alt+F: Buka Simulator Lolos Deteksi AI (Pre-Flight).\n"
                 "  Alt+E: Jalankan audit kemiripan audio.\n"
                 "  Alt+S: Tampilkan/sembunyikan pengaturan lanjutan atau buka Pemotong Audio.\n"
                 "  Alt+A: Buka pengaturan API Cloud.\n"
+                "  Ctrl+Shift+B: Buka Antrean Batch dan Pemantau Folder Otomatis.\n"
                 "  Ctrl+U: Buka Pemotong Audio dari tab mana saja.\n"
                 "  Ctrl+Shift+S: Ekspor profil pengaturan (.sn).\n"
                 "  Ctrl+Shift+O: Impor profil pengaturan (.sn).\n\n"
@@ -1439,9 +2352,11 @@ class AccessibilityGuideDialog(wx.Dialog):
                 "Audio Sanitizer Tab (Alt+1 or Ctrl+Tab):\n"
                 "  Alt+B: Browse for input audio file.\n"
                 "  Alt+P: Process and export sanitized audio.\n"
+                "  Alt+F: Open Pre-Flight AI Evasion Simulator.\n"
                 "  Alt+E: Run audio similarity audit.\n"
                 "  Alt+S: Toggle advanced settings panel or open Audio Slicer.\n"
                 "  Alt+A: Open Cloud API settings dialog.\n"
+                "  Ctrl+Shift+B: Open Batch Queue and Folder Watcher dialog.\n"
                 "  Ctrl+U: Launch Audio Slicer from any tab.\n"
                 "  Ctrl+Shift+S: Export configuration profile (.sn).\n"
                 "  Ctrl+Shift+O: Import configuration profile (.sn).\n\n"
@@ -1468,6 +2383,11 @@ class AccessibilityGuideDialog(wx.Dialog):
             name="Accessibility Guide Read-Only Text Area"
         )
         self.text_ctrl.SetToolTip(tr("ACCESSIBILITY_TIP_TEXT"))
+        make_accessible_control(
+            self.text_ctrl,
+            lambda: tr("ACCESSIBILITY_TITLE"),
+            lambda: tr("ACCESSIBILITY_TIP_TEXT")
+        )
         main_sizer.Add(self.text_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -1554,6 +2474,11 @@ class ChangelogDialog(wx.Dialog):
             name="Changelog and Release Notes Text Area"
         )
         self.text_ctrl.SetToolTip(tr("CHANGELOG_TIP_TEXT"))
+        make_accessible_control(
+            self.text_ctrl,
+            lambda: tr("CHANGELOG_TITLE"),
+            lambda: tr("CHANGELOG_TIP_TEXT")
+        )
         main_sizer.Add(self.text_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -1693,8 +2618,10 @@ class AboutDialog(wx.Dialog):
                 "Situs Web Asli:\n"
                 "  http://technokerslab.blogspot.com/\n\n"
                 "Fitur:\n"
-                "  - Audio Sanitizer: Pergeseran nada, penyesuaian tempo, pergeseran frekuensi, akustik ruangan, dan peredaman vokal.\n"
-                "  - Lyrics Sanitizer: Filter kata kasar, filter nama selebriti, pembersihan Unicode, dan variasi fonetik.\n"
+                "  - Audio Sanitizer: Preset platform target, deteksi nada dasar dan BPM, pergeseran nada, formant, tempo, penetral watermark AI, dan peredaman vokal.\n"
+                "  - Pre-Flight Simulator & Audit: Simulasi skor keamanan multi-vektor, visualizer gelombang, dan pemutar uji dengar A/B/Delta.\n"
+                "  - Pemrosesan Batch & Pemantau Folder: Antrean banyak berkas dan pemrosesan otomatis di latar belakang.\n"
+                "  - Lyrics Sanitizer: Filter kata kasar, filter nama selebriti, pembersihan Unicode, pemenggal suku kata, dan pembuat prompt gaya musik.\n"
                 "  - Audio Slicer: Memotong trek audio menjadi potongan WAV yang siap diunggah ke pustaka.\n"
                 "  - Tiket Dukungan: Kirim tiket dan pantau balasan pengembang langsung dari aplikasi.\n"
                 "  - Profil Pengaturan: Disimpan secara aman di komputer lokal dalam format .sn.\n"
@@ -1713,8 +2640,10 @@ class AboutDialog(wx.Dialog):
                 "Original Website:\n"
                 "  http://technokerslab.blogspot.com/\n\n"
                 "Features:\n"
-                "  - Audio Sanitizer: Pitch shift, tempo adjustments, frequency shift, room acoustics, and vocal reduction.\n"
-                "  - Lyrics Sanitizer: Profanity filter, celebrity name filter, Unicode cleanup, and phonetic variations.\n"
+                "  - Audio Sanitizer: Target platform presets, key and BPM detection, pitch, formant, tempo, AI watermark neutralizer, and vocal reduction.\n"
+                "  - Pre-Flight Simulator & Audit: Multi-vector safety audit, waveform visualizer, and real-time A/B/Delta audition player.\n"
+                "  - Batch & Folder Watcher: Multi-file processing queue and automatic background folder watching.\n"
+                "  - Lyrics Sanitizer: Profanity filter, celebrity name filter, Unicode cleanup, multilingual syllabifier, and style prompt generator.\n"
                 "  - Audio Slicer: Split audio tracks into WAV chunks suitable for library uploads.\n"
                 "  - In-App Support: Submit tickets and track developer replies directly within the app.\n"
                 "  - Settings Profiles: Stored locally in .sn format.\n"
@@ -1732,6 +2661,11 @@ class AboutDialog(wx.Dialog):
             name="About Software Read-Only Text Area"
         )
         self.text_ctrl.SetToolTip(tr("ABOUT_TIP_TEXT"))
+        make_accessible_control(
+            self.text_ctrl,
+            lambda: tr("ABOUT_TITLE"),
+            lambda: tr("ABOUT_TIP_TEXT")
+        )
         main_sizer.Add(self.text_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -1764,7 +2698,7 @@ class AboutDialog(wx.Dialog):
             event.Skip()
 
 
-class AudioSanitizerPanel(wx.Panel):
+class AudioSanitizerPanel(scrolled.ScrolledPanel):
     """
     Accessible Tab for configuring and processing audio files for Suno AI
     using the multi-vector evasion DSP and Cloud API pipeline.
@@ -1782,6 +2716,8 @@ class AudioSanitizerPanel(wx.Panel):
 
         self._build_ui()
         self.SetDropTarget(AudioFileDropTarget(self))
+        if hasattr(self, "on_mode_changed"):
+            self.on_mode_changed(None)
 
     def _build_ui(self):
         main_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -1804,7 +2740,7 @@ class AudioSanitizerPanel(wx.Panel):
             style=wx.TE_READONLY,
             name="Selected Audio File Path"
         )
-        self.file_path_ctrl.SetToolTip(tr("TIP_AUDIO_FILE_PATH"))
+        make_accessible_control(self.file_path_ctrl, lambda: tr("AUDIO_LABEL_SELECTED_FILE"), lambda: tr("TIP_AUDIO_FILE_PATH"))
         self.file_path_ctrl.SetValue(tr("AUDIO_NO_FILE_SELECTED"))
         picker_sizer.Add(self.file_path_ctrl, 1, wx.EXPAND | wx.RIGHT, 10)
 
@@ -1822,6 +2758,26 @@ class AudioSanitizerPanel(wx.Panel):
         )
         file_box_sizer.Add(self.file_info_text, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
+        # Key & BPM Detection & Recommendation Row
+        rec_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.key_bpm_label = wx.StaticText(
+            self,
+            label=tr("AUDIO_KEY_BPM_NONE"),
+            name="Key and BPM Detection Label"
+        )
+        rec_sizer.Add(self.key_bpm_label, 1, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+
+        self.apply_rec_btn = wx.Button(
+            self,
+            label=tr("AUDIO_BTN_APPLY_REC", rec=""),
+            name="Apply Key Recommendation Button"
+        )
+        self.apply_rec_btn.SetToolTip(tr("AUDIO_BTN_APPLY_REC", rec="Key"))
+        self.apply_rec_btn.Enable(False)
+        self.apply_rec_btn.Bind(wx.EVT_BUTTON, self.on_apply_rec_pitch)
+        rec_sizer.Add(self.apply_rec_btn, 0, wx.ALIGN_CENTER_VERTICAL)
+        file_box_sizer.Add(rec_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+
         main_sizer.Add(file_box_sizer, 0, wx.EXPAND | wx.ALL, 8)
 
         # -------------------------------------------------------------
@@ -1830,6 +2786,29 @@ class AudioSanitizerPanel(wx.Panel):
         self.param_box = wx.StaticBox(self, label=tr("AUDIO_GROUP_PARAMS"))
         self.param_box.SetName("Sanitization Parameters Group")
         param_box_sizer = wx.StaticBoxSizer(self.param_box, wx.VERTICAL)
+
+        # Target Platform Selection
+        platform_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.platform_label = wx.StaticText(self, label=tr("AUDIO_LABEL_PLATFORM"))
+        self.platform_label.SetName("Platform Target Label")
+        platform_sizer.Add(self.platform_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+
+        self.platform_choice = wx.Choice(
+            self,
+            choices=[
+                tr("AUDIO_PLATFORM_SUNO"),
+                tr("AUDIO_PLATFORM_LYRIA"),
+                tr("AUDIO_PLATFORM_UDIO"),
+                tr("AUDIO_PLATFORM_YOUTUBE"),
+                tr("AUDIO_PLATFORM_TIKTOK"),
+                tr("AUDIO_PLATFORM_CUSTOM")
+            ],
+            name="Platform Target Selection"
+        )
+        self.platform_choice.SetSelection(0)
+        self.platform_choice.Bind(wx.EVT_CHOICE, self.on_platform_changed)
+        platform_sizer.Add(self.platform_choice, 1, wx.EXPAND | wx.RIGHT, 10)
+        param_box_sizer.Add(platform_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
 
         # Workflow Mode Selection (Vocal Cover vs Instrumental)
         mode_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -1850,6 +2829,90 @@ class AudioSanitizerPanel(wx.Panel):
         self.mode_choice.Bind(wx.EVT_CHOICE, self.on_mode_changed)
         mode_sizer.Add(self.mode_choice, 1, wx.EXPAND | wx.RIGHT, 10)
         param_box_sizer.Add(mode_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
+
+        # Modular Controls Box (User-adjustable sliders with clear defaults)
+        self.modular_box = wx.StaticBox(self, label=tr("AUDIO_MODULAR_BOX"))
+        self.modular_box.SetName("Modular Controls Group")
+        mod_box_sizer = wx.StaticBoxSizer(self.modular_box, wx.VERTICAL)
+
+        sliders_grid = wx.FlexGridSizer(cols=4, vgap=6, hgap=12)
+        sliders_grid.AddGrowableCol(1, 1)
+        sliders_grid.AddGrowableCol(3, 1)
+
+        # Pitch Shift Slider
+        self.pitch_lbl = wx.StaticText(self, label=tr("AUDIO_SLIDER_PITCH"))
+        self.pitch_lbl.SetName("Pitch Shift Label")
+        sliders_grid.Add(self.pitch_lbl, 0, wx.ALIGN_CENTER_VERTICAL)
+        self.pitch_spin = wx.SpinCtrlDouble(self, value="2.0", min=-12.0, max=12.0, inc=0.5, name="Pitch Shift Semitones")
+        self.pitch_spin.SetDigits(1)
+        make_accessible_control(self.pitch_spin, lambda: tr("AUDIO_SLIDER_PITCH"), lambda: tr("TIP_AUDIO_PITCH"))
+        sliders_grid.Add(self.pitch_spin, 1, wx.EXPAND)
+
+        # Formant Shift Slider
+        self.formant_lbl = wx.StaticText(self, label=tr("AUDIO_SLIDER_FORMANT"))
+        self.formant_lbl.SetName("Formant Shift Label")
+        sliders_grid.Add(self.formant_lbl, 0, wx.ALIGN_CENTER_VERTICAL)
+        self.formant_spin = wx.SpinCtrlDouble(self, value="2.0", min=-6.0, max=6.0, inc=0.5, name="Formant Shift Semitones")
+        self.formant_spin.SetDigits(1)
+        make_accessible_control(self.formant_spin, lambda: tr("AUDIO_SLIDER_FORMANT"), lambda: tr("TIP_AUDIO_FORMANT"))
+        sliders_grid.Add(self.formant_spin, 1, wx.EXPAND)
+
+        # Tempo Slider
+        self.tempo_lbl = wx.StaticText(self, label=tr("AUDIO_SLIDER_TEMPO"))
+        self.tempo_lbl.SetName("Tempo Shift Label")
+        sliders_grid.Add(self.tempo_lbl, 0, wx.ALIGN_CENTER_VERTICAL)
+        self.tempo_spin = wx.SpinCtrlDouble(self, value="0.940", min=0.850, max=1.150, inc=0.010, name="Tempo Factor")
+        self.tempo_spin.SetDigits(3)
+        make_accessible_control(self.tempo_spin, lambda: tr("AUDIO_SLIDER_TEMPO"), lambda: tr("TIP_AUDIO_TEMPO"))
+        sliders_grid.Add(self.tempo_spin, 1, wx.EXPAND)
+
+        # Reverb Wet Slider
+        self.reverb_lbl = wx.StaticText(self, label=tr("AUDIO_SLIDER_REVERB"))
+        self.reverb_lbl.SetName("Reverb Wet Label")
+        sliders_grid.Add(self.reverb_lbl, 0, wx.ALIGN_CENTER_VERTICAL)
+        self.reverb_spin = wx.SpinCtrlDouble(self, value="18.0", min=0.0, max=50.0, inc=1.0, name="Reverb Wet Percent")
+        self.reverb_spin.SetDigits(0)
+        make_accessible_control(self.reverb_spin, lambda: tr("AUDIO_SLIDER_REVERB"), lambda: tr("TIP_AUDIO_REVERB"))
+        sliders_grid.Add(self.reverb_spin, 1, wx.EXPAND)
+
+        # Vocal Ducking Slider
+        self.vocal_duck_lbl = wx.StaticText(self, label=tr("AUDIO_SLIDER_VOCAL"))
+        self.vocal_duck_lbl.SetName("Vocal Ducking Label")
+        sliders_grid.Add(self.vocal_duck_lbl, 0, wx.ALIGN_CENTER_VERTICAL)
+        self.vocal_duck_spin = wx.SpinCtrlDouble(self, value="12.0", min=0.0, max=24.0, inc=1.0, name="Vocal Ducking dB")
+        self.vocal_duck_spin.SetDigits(1)
+        make_accessible_control(self.vocal_duck_spin, lambda: tr("AUDIO_SLIDER_VOCAL"), lambda: tr("TIP_AUDIO_VOCAL_DUCK"))
+        sliders_grid.Add(self.vocal_duck_spin, 1, wx.EXPAND)
+
+        mod_box_sizer.Add(sliders_grid, 0, wx.EXPAND | wx.ALL, 6)
+
+        # Modular Checkboxes
+        mod_chk_sizer = wx.FlexGridSizer(cols=2, vgap=4, hgap=12)
+        mod_chk_sizer.AddGrowableCol(0, 1)
+        mod_chk_sizer.AddGrowableCol(1, 1)
+
+        self.watermark_chk = wx.CheckBox(self, label=tr("AUDIO_CHK_WATERMARK"), name="AI Watermark Neutralizer Checkbox")
+        self.watermark_chk.SetValue(True)
+        self.watermark_chk.SetToolTip(tr("TIP_AUDIO_WATERMARK"))
+        mod_chk_sizer.Add(self.watermark_chk, 0, wx.ALL, 2)
+
+        self.psycho_chk = wx.CheckBox(self, label=tr("AUDIO_CHK_PSYCHO"), name="Psychoacoustic Masking Checkbox")
+        self.psycho_chk.SetValue(True)
+        self.psycho_chk.SetToolTip(tr("TIP_AUDIO_PSYCHO"))
+        mod_chk_sizer.Add(self.psycho_chk, 0, wx.ALL, 2)
+
+        self.articulation_chk = wx.CheckBox(self, label=tr("AUDIO_ARTICULATION_SOFTENER"), name="Vocal Articulation Softener Checkbox")
+        self.articulation_chk.SetValue(True)
+        self.articulation_chk.SetToolTip(tr("TIP_AUDIO_ARTICULATION"))
+        mod_chk_sizer.Add(self.articulation_chk, 0, wx.ALL, 2)
+
+        self.vocal_chk = wx.CheckBox(self, label=tr("AUDIO_VOCAL_CUT"), name="Center Vocal Suppression Checkbox")
+        self.vocal_chk.SetValue(False)
+        self.vocal_chk.SetToolTip(tr("TIP_AUDIO_VOCAL"))
+        mod_chk_sizer.Add(self.vocal_chk, 0, wx.ALL, 2)
+
+        mod_box_sizer.Add(mod_chk_sizer, 0, wx.EXPAND | wx.ALL, 6)
+        param_box_sizer.Add(mod_box_sizer, 0, wx.EXPAND | wx.ALL, 6)
 
         # Preset Choice + Cloud Settings Button
         preset_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -1915,45 +2978,6 @@ class AudioSanitizerPanel(wx.Panel):
         self.adv_panel.SetName("Advanced DSP Settings Panel")
         adv_sizer = wx.BoxSizer(wx.VERTICAL)
 
-        grid_sizer = wx.FlexGridSizer(cols=2, vgap=6, hgap=15)
-        grid_sizer.AddGrowableCol(1, 1)
-
-        # Macro Key Transposition / Pitch Shift
-        pitch_label = wx.StaticText(self.adv_panel, label="Key Transposition (Semitones):")
-        pitch_label.SetName("Micro Pitch Shift Label")
-        grid_sizer.Add(pitch_label, 0, wx.ALIGN_CENTER_VERTICAL)
-
-        self.pitch_spin = wx.SpinCtrlDouble(
-            self.adv_panel,
-            value="2.2",
-            min=-12.0,
-            max=12.0,
-            inc=0.1,
-            name="Micro Pitch Shift (Semitones/Cents)"
-        )
-        self.pitch_spin.SetDigits(1)
-        self.pitch_spin.SetToolTip(tr("TIP_AUDIO_PITCH"))
-        grid_sizer.Add(self.pitch_spin, 0, wx.EXPAND)
-
-        # Tempo Adjustment
-        tempo_label = wx.StaticText(self.adv_panel, label="Tempo Shift Factor:")
-        tempo_label.SetName("Tempo Shift Factor Label")
-        grid_sizer.Add(tempo_label, 0, wx.ALIGN_CENTER_VERTICAL)
-
-        self.tempo_spin = wx.SpinCtrlDouble(
-            self.adv_panel,
-            value="0.940",
-            min=0.850,
-            max=1.150,
-            inc=0.010,
-            name="Tempo Shift Factor"
-        )
-        self.tempo_spin.SetDigits(3)
-        self.tempo_spin.SetToolTip(tr("TIP_AUDIO_TEMPO"))
-        grid_sizer.Add(self.tempo_spin, 0, wx.EXPAND)
-
-        adv_sizer.Add(grid_sizer, 0, wx.EXPAND | wx.ALL, 4)
-
         # Multi-Vector Evasion Checkboxes
         chk_sizer = wx.FlexGridSizer(cols=2, vgap=4, hgap=12)
         chk_sizer.AddGrowableCol(0, 1)
@@ -2003,24 +3027,6 @@ class AudioSanitizerPanel(wx.Panel):
         self.reamping_chk.SetValue(True)
         self.reamping_chk.SetToolTip(tr("TIP_AUDIO_REAMPING"))
         chk_sizer.Add(self.reamping_chk, 0, wx.ALL, 2)
-
-        self.vocal_chk = wx.CheckBox(
-            self.adv_panel,
-            label="Center Vocal Suppression & Anti-Whisper Scrambler",
-            name="Center Vocal Suppression Checkbox"
-        )
-        self.vocal_chk.SetValue(False)
-        self.vocal_chk.SetToolTip(tr("TIP_AUDIO_VOCAL"))
-        chk_sizer.Add(self.vocal_chk, 0, wx.ALL, 2)
-
-        self.articulation_chk = wx.CheckBox(
-            self.adv_panel,
-            label=tr("AUDIO_ARTICULATION_SOFTENER"),
-            name="Anti-ASR Vocal Articulation Softener Checkbox"
-        )
-        self.articulation_chk.SetValue(True)
-        self.articulation_chk.SetToolTip(tr("TIP_AUDIO_ARTICULATION"))
-        chk_sizer.Add(self.articulation_chk, 0, wx.ALL, 2)
 
         self.preamble_chk = wx.CheckBox(
             self.adv_panel,
@@ -2081,13 +3087,13 @@ class AudioSanitizerPanel(wx.Panel):
             name="Maximum Audio Duration in Seconds"
         )
         self.trim_spin.SetDigits(1)
-        self.trim_spin.SetToolTip(tr("TIP_AUDIO_TRIM_SPIN"))
+        make_accessible_control(self.trim_spin, lambda: tr("AUDIO_TRIM_CLIP"), lambda: tr("TIP_AUDIO_TRIM_SPIN"))
         self.trim_spin.Enable(False)
         trim_sizer.Add(self.trim_spin, 0, wx.ALIGN_CENTER_VERTICAL)
 
-        seconds_label = wx.StaticText(self.adv_panel, label="seconds")
-        seconds_label.SetName("Seconds Unit Label")
-        trim_sizer.Add(seconds_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+        self.seconds_label = wx.StaticText(self.adv_panel, label=tr("AUDIO_UNIT_SECONDS"))
+        self.seconds_label.SetName("Seconds Unit Label")
+        trim_sizer.Add(self.seconds_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
 
         adv_sizer.Add(trim_sizer, 0, wx.ALL, 4)
 
@@ -2098,9 +3104,10 @@ class AudioSanitizerPanel(wx.Panel):
         main_sizer.Add(param_box_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
         # -------------------------------------------------------------
-        # Section 3: Action Buttons & Progress
+        # Section 3: Action Buttons & Progress (2 balanced rows for 760px+)
         # -------------------------------------------------------------
-        action_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        action_sizer = wx.BoxSizer(wx.VERTICAL)
+        action_row1 = wx.BoxSizer(wx.HORIZONTAL)
 
         self.process_btn = wx.Button(
             self,
@@ -2109,7 +3116,7 @@ class AudioSanitizerPanel(wx.Panel):
         )
         self.process_btn.SetToolTip(tr("TIP_AUDIO_PROCESS_BTN"))
         self.process_btn.Bind(wx.EVT_BUTTON, self.on_process)
-        action_sizer.Add(self.process_btn, 0, wx.RIGHT, 8)
+        action_row1.Add(self.process_btn, 0, wx.RIGHT, 6)
 
         self.cancel_btn = wx.Button(
             self,
@@ -2119,7 +3126,37 @@ class AudioSanitizerPanel(wx.Panel):
         self.cancel_btn.SetToolTip(tr("TIP_AUDIO_CANCEL_BTN"))
         self.cancel_btn.Bind(wx.EVT_BUTTON, self.on_cancel_processing)
         self.cancel_btn.Enable(False)
-        action_sizer.Add(self.cancel_btn, 0, wx.RIGHT, 8)
+        action_row1.Add(self.cancel_btn, 0, wx.RIGHT, 6)
+
+        self.preflight_btn = wx.Button(
+            self,
+            label=tr("AUDIO_BTN_PREFLIGHT"),
+            name="Pre-Flight Evasion Simulator Button"
+        )
+        self.preflight_btn.SetToolTip(tr("TIP_PREFLIGHT_BTN"))
+        self.preflight_btn.Bind(wx.EVT_BUTTON, self.on_preflight)
+        self.preflight_btn.Enable(False)
+        action_row1.Add(self.preflight_btn, 0, wx.RIGHT, 8)
+
+        self.gauge = wx.Gauge(
+            self,
+            range=100,
+            style=wx.GA_HORIZONTAL | wx.GA_SMOOTH,
+            name="Processing Progress"
+        )
+        action_row1.Add(self.gauge, 1, wx.ALIGN_CENTER_VERTICAL)
+        action_sizer.Add(action_row1, 0, wx.EXPAND | wx.BOTTOM, 6)
+
+        action_row2 = wx.BoxSizer(wx.HORIZONTAL)
+
+        self.batch_btn = wx.Button(
+            self,
+            label=tr("AUDIO_BTN_BATCH"),
+            name="Batch Processing and Folder Watcher Button"
+        )
+        self.batch_btn.SetToolTip(tr("TIP_BATCH_BTN"))
+        self.batch_btn.Bind(wx.EVT_BUTTON, self.on_batch)
+        action_row2.Add(self.batch_btn, 0, wx.RIGHT, 6)
 
         self.audit_btn = wx.Button(
             self,
@@ -2129,52 +3166,93 @@ class AudioSanitizerPanel(wx.Panel):
         self.audit_btn.SetToolTip(tr("TIP_AUDIO_AUDIT_BTN"))
         self.audit_btn.Bind(wx.EVT_BUTTON, self.on_audit)
         self.audit_btn.Enable(False)
-        action_sizer.Add(self.audit_btn, 0, wx.RIGHT, 8)
+        action_row2.Add(self.audit_btn, 0, wx.RIGHT, 6)
 
         self.slicer_btn = wx.Button(
             self,
-            label="ABS Audio &Slicer...",
+            label=tr("AUDIO_BTN_SLICER"),
             name="ABS Audio Slicer Button"
         )
         self.slicer_btn.SetToolTip(tr("TIP_AUDIO_SLICER_BTN"))
         self.slicer_btn.Bind(wx.EVT_BUTTON, self.on_slicer)
-        action_sizer.Add(self.slicer_btn, 0, wx.RIGHT, 8)
+        action_row2.Add(self.slicer_btn, 0, wx.RIGHT, 6)
 
         self.protocol_btn = wx.Button(
             self,
-            label="Suno &Protocol...",
+            label=tr("AUDIO_BTN_PROTOCOL"),
             name="Suno Upload Protocol Button"
         )
         self.protocol_btn.SetToolTip(tr("TIP_AUDIO_PROTOCOL_BTN"))
         self.protocol_btn.Bind(wx.EVT_BUTTON, self.on_protocol)
-        action_sizer.Add(self.protocol_btn, 0, wx.RIGHT, 10)
-
-        self.gauge = wx.Gauge(
-            self,
-            range=100,
-            style=wx.GA_HORIZONTAL | wx.GA_SMOOTH,
-            name="Processing Progress"
-        )
-        action_sizer.Add(self.gauge, 1, wx.ALIGN_CENTER_VERTICAL)
+        action_row2.Add(self.protocol_btn, 0)
+        action_sizer.Add(action_row2, 0, wx.EXPAND)
 
         main_sizer.Add(action_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
         # -------------------------------------------------------------
+        # Section 3B: Visualizer & A/B/Delta Audition Player
+        # -------------------------------------------------------------
+        self.vis_box = wx.StaticBox(self, label=tr("AUDIO_VIS_GROUP"))
+        self.vis_box.SetName("Waveform Visualizer and Audition Player Group")
+        vis_box_sizer = wx.StaticBoxSizer(self.vis_box, wx.VERTICAL)
+
+        self.visualizer = AudioVisualizerPanel(self, size=(-1, 105))
+        vis_box_sizer.Add(self.visualizer, 0, wx.EXPAND | wx.ALL, 4)
+
+        self.vis_summary_lbl = wx.TextCtrl(
+            self,
+            value=self.visualizer.get_accessible_summary(),
+            style=wx.TE_READONLY | wx.BORDER_NONE,
+            name="Waveform Accessibility Summary"
+        )
+        make_accessible_control(self.vis_summary_lbl, lambda: tr("AUDIO_VIS_GROUP"))
+        vis_box_sizer.Add(self.vis_summary_lbl, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 4)
+
+        player_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.play_orig_btn = wx.Button(self, label=tr("AUDIO_BTN_PLAY_ORIG"), name="Play Original Audio Button")
+        self.play_orig_btn.SetToolTip(tr("AUDIO_BTN_PLAY_ORIG"))
+        self.play_orig_btn.Enable(False)
+        self.play_orig_btn.Bind(wx.EVT_BUTTON, self.on_play_original)
+        player_sizer.Add(self.play_orig_btn, 0, wx.RIGHT, 6)
+
+        self.play_sani_btn = wx.Button(self, label=tr("AUDIO_BTN_PLAY_SANI"), name="Play Sanitized Audio Button")
+        self.play_sani_btn.SetToolTip(tr("AUDIO_BTN_PLAY_SANI"))
+        self.play_sani_btn.Enable(False)
+        self.play_sani_btn.Bind(wx.EVT_BUTTON, self.on_play_sanitized)
+        player_sizer.Add(self.play_sani_btn, 0, wx.RIGHT, 6)
+
+        self.play_delta_btn = wx.Button(self, label=tr("AUDIO_BTN_PLAY_DELTA"), name="Play Delta Audio Button")
+        self.play_delta_btn.SetToolTip(tr("AUDIO_BTN_PLAY_DELTA"))
+        self.play_delta_btn.Enable(False)
+        self.play_delta_btn.Bind(wx.EVT_BUTTON, self.on_play_delta)
+        player_sizer.Add(self.play_delta_btn, 0, wx.RIGHT, 6)
+
+        self.stop_play_btn = wx.Button(self, label=tr("AUDIO_BTN_STOP_PLAY"), name="Stop Audio Playback Button")
+        self.stop_play_btn.SetToolTip(tr("AUDIO_BTN_STOP_PLAY"))
+        self.stop_play_btn.Bind(wx.EVT_BUTTON, self.on_stop_playback)
+        player_sizer.Add(self.stop_play_btn, 0)
+
+        vis_box_sizer.Add(player_sizer, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        main_sizer.Add(vis_box_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+
+        # -------------------------------------------------------------
         # Section 4: Processing Log Area
         # -------------------------------------------------------------
-        log_label = wx.StaticText(self, label="Audio Processing Log:")
-        log_label.SetName("Audio Processing Log Label")
-        main_sizer.Add(log_label, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
+        self.log_label = wx.StaticText(self, label=tr("AUDIO_GROUP_LOGS"))
+        self.log_label.SetName("Audio Processing Log Label")
+        main_sizer.Add(self.log_label, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
 
         self.log_ctrl = wx.TextCtrl(
             self,
             style=wx.TE_MULTILINE | wx.TE_READONLY,
+            size=(-1, 95),
             name="Audio Processing Log"
         )
-        self.log_ctrl.SetToolTip(tr("TIP_AUDIO_LOG"))
+        make_accessible_control(self.log_ctrl, lambda: tr("AUDIO_GROUP_LOGS"), lambda: tr("TIP_AUDIO_LOG"))
         main_sizer.Add(self.log_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
         self.SetSizer(main_sizer)
+        self.SetupScrolling(scroll_x=False, scroll_y=True)
 
     def on_toggle_advanced(self, event: wx.CommandEvent):
         show_adv = not self.adv_panel.IsShown()
@@ -2186,6 +3264,7 @@ class AudioSanitizerPanel(wx.Panel):
             self.toggle_adv_btn.SetLabel(tr("AUDIO_SHOW_ADVANCED_BTN"))
             self.toggle_adv_btn.SetToolTip(tr("TIP_AUDIO_ADV_SHOW"))
         self.Layout()
+        self.SetupScrolling(scroll_x=False, scroll_y=True)
         parent = self.GetTopLevelParent()
         if parent:
             parent.Layout()
@@ -2198,70 +3277,181 @@ class AudioSanitizerPanel(wx.Panel):
             self.set_status("Cancelling audio processing...")
             self.log_ctrl.AppendText("\nCancellation signal sent to worker thread...\n")
 
-    def on_mode_changed(self, event: wx.CommandEvent):
-        mode_idx = self.mode_choice.GetSelection()
-        if mode_idx == 0:  # Vocal Cover Mode (Melodic Evasion & Anti-ASR)
-            self.pitch_spin.SetValue(2.2)
+    def _restore_core_dsp_flags(self, is_vocal_cover: bool, bode_enabled: bool):
+        for attr, val in (
+            ("jitter_chk", True),
+            ("bode_chk", bode_enabled),
+            ("decoy_chk", True),
+            ("allpass_chk", True),
+            ("reamping_chk", True),
+            ("preamble_chk", not is_vocal_cover),
+            ("filter_chk", True),
+            ("dither_chk", True),
+            ("metadata_chk", True),
+        ):
+            if hasattr(self, attr):
+                getattr(self, attr).SetValue(val)
+
+    def on_platform_changed(self, event: Optional[wx.CommandEvent] = None):
+        idx = self.platform_choice.GetSelection() if hasattr(self, "platform_choice") else 0
+        is_vocal_cover = (self.mode_choice.GetSelection() == 0) if hasattr(self, "mode_choice") else True
+        if idx == 0:  # Suno v4-v6 Cover Mode
+            self.pitch_spin.SetValue(2.0 if is_vocal_cover else 2.5)
+            self.formant_spin.SetValue(2.0)
             self.tempo_spin.SetValue(0.940)
-            self.jitter_chk.SetValue(True)
-            self.bode_chk.SetValue(False)
-            self.decoy_chk.SetValue(True)
-            self.allpass_chk.SetValue(True)
-            self.reamping_chk.SetValue(True)
+            self.reverb_spin.SetValue(18.0)
+            self.vocal_duck_spin.SetValue(12.0)
+            self.watermark_chk.SetValue(True)
+            self.psycho_chk.SetValue(True)
+            self.articulation_chk.SetValue(is_vocal_cover)
+            self.vocal_chk.SetValue(not is_vocal_cover)
+            self._restore_core_dsp_flags(is_vocal_cover, bode_enabled=not is_vocal_cover)
+            self.set_status(tr("STATUS_PLATFORM_SUNO"))
+        elif idx == 1:  # Google Lyria 3.5 / SynthID Cleaner (Watermark Neutralizer Only)
+            self.pitch_spin.SetValue(0.0)
+            self.formant_spin.SetValue(0.0)
+            self.tempo_spin.SetValue(1.000)
+            self.reverb_spin.SetValue(0.0)
+            self.vocal_duck_spin.SetValue(0.0)
+            self.watermark_chk.SetValue(True)
+            self.psycho_chk.SetValue(False)
+            for attr in (
+                "articulation_chk", "vocal_chk", "jitter_chk", "bode_chk",
+                "decoy_chk", "allpass_chk", "reamping_chk", "preamble_chk",
+                "filter_chk", "dither_chk", "trim_chk",
+            ):
+                if hasattr(self, attr):
+                    getattr(self, attr).SetValue(False)
+            if hasattr(self, "metadata_chk"):
+                self.metadata_chk.SetValue(True)
+            self.set_status(tr("STATUS_PLATFORM_LYRIA"))
+        elif idx == 2:  # Udio Mode
+            self.pitch_spin.SetValue(2.5)
+            self.formant_spin.SetValue(2.0)
+            self.tempo_spin.SetValue(0.920)
+            self.reverb_spin.SetValue(20.0)
+            self.vocal_duck_spin.SetValue(14.0)
+            self.watermark_chk.SetValue(True)
+            self.psycho_chk.SetValue(True)
+            self.articulation_chk.SetValue(is_vocal_cover)
+            self.vocal_chk.SetValue(not is_vocal_cover)
+            self._restore_core_dsp_flags(is_vocal_cover, bode_enabled=not is_vocal_cover)
+            self.set_status(tr("STATUS_PLATFORM_UDIO"))
+        elif idx == 3:  # YouTube Content ID
+            self.pitch_spin.SetValue(3.0)
+            self.formant_spin.SetValue(2.5)
+            self.tempo_spin.SetValue(0.910)
+            self.reverb_spin.SetValue(22.0)
+            self.vocal_duck_spin.SetValue(15.0)
+            self.watermark_chk.SetValue(True)
+            self.psycho_chk.SetValue(True)
+            self.articulation_chk.SetValue(is_vocal_cover)
+            self.vocal_chk.SetValue(not is_vocal_cover)
+            self._restore_core_dsp_flags(is_vocal_cover, bode_enabled=True)
+            self.set_status(tr("STATUS_PLATFORM_YOUTUBE"))
+        elif idx == 4:  # TikTok / Reels
+            self.pitch_spin.SetValue(2.2)
+            self.formant_spin.SetValue(1.8)
+            self.tempo_spin.SetValue(0.950)
+            self.reverb_spin.SetValue(15.0)
+            self.vocal_duck_spin.SetValue(10.0)
+            self.watermark_chk.SetValue(True)
+            self.psycho_chk.SetValue(True)
+            self.articulation_chk.SetValue(is_vocal_cover)
+            self.vocal_chk.SetValue(not is_vocal_cover)
+            self._restore_core_dsp_flags(is_vocal_cover, bode_enabled=not is_vocal_cover)
+            self.set_status(tr("STATUS_PLATFORM_TIKTOK"))
+        else:  # Custom
+            self.set_status(tr("STATUS_PLATFORM_CUSTOM"))
+
+    def on_mode_changed(self, event: Optional[wx.CommandEvent] = None):
+        mode_idx = self.mode_choice.GetSelection() if hasattr(self, "mode_choice") else 0
+        if mode_idx == 0:  # Vocal Cover Mode
+            self.pitch_spin.SetValue(2.0)
+            self.formant_spin.SetValue(2.0)
+            self.tempo_spin.SetValue(0.940)
             self.vocal_chk.SetValue(False)
             if hasattr(self, "articulation_chk"):
                 self.articulation_chk.SetValue(True)
-            self.preamble_chk.SetValue(False)
-            self.set_status("Vocal Cover Mode active: Vocal melody, pitch, and phrasing preserved.")
-        else:  # Instrumental Mode (Complete Vocal Elimination)
+            if hasattr(self, "jitter_chk"):
+                self.jitter_chk.SetValue(True)
+            if hasattr(self, "bode_chk"):
+                self.bode_chk.SetValue(False)
+            if hasattr(self, "decoy_chk"):
+                self.decoy_chk.SetValue(True)
+            if hasattr(self, "allpass_chk"):
+                self.allpass_chk.SetValue(True)
+            if hasattr(self, "reamping_chk"):
+                self.reamping_chk.SetValue(True)
+            if hasattr(self, "preamble_chk"):
+                self.preamble_chk.SetValue(False)
+            self.set_status(tr("STATUS_PRESET_COVER"))
+        else:  # Instrumental Mode
             self.pitch_spin.SetValue(2.5)
+            self.formant_spin.SetValue(2.0)
             self.tempo_spin.SetValue(0.940)
-            self.jitter_chk.SetValue(True)
-            self.bode_chk.SetValue(True)
-            self.decoy_chk.SetValue(True)
-            self.allpass_chk.SetValue(True)
-            self.reamping_chk.SetValue(True)
             self.vocal_chk.SetValue(True)
             if hasattr(self, "articulation_chk"):
                 self.articulation_chk.SetValue(False)
-            self.preamble_chk.SetValue(True)
-            self.set_status("Instrumental Mode active: Center vocals completely eliminated.")
+            if hasattr(self, "jitter_chk"):
+                self.jitter_chk.SetValue(True)
+            if hasattr(self, "bode_chk"):
+                self.bode_chk.SetValue(True)
+            if hasattr(self, "decoy_chk"):
+                self.decoy_chk.SetValue(True)
+            if hasattr(self, "allpass_chk"):
+                self.allpass_chk.SetValue(True)
+            if hasattr(self, "reamping_chk"):
+                self.reamping_chk.SetValue(True)
+            if hasattr(self, "preamble_chk"):
+                self.preamble_chk.SetValue(True)
+            self.set_status(tr("STATUS_MODE_INSTRUMENTAL"))
 
     def on_preset_changed(self, event: wx.CommandEvent):
         idx = self.preset_choice.GetSelection()
-        if idx == 0:  # Complete Sanitization (Recommended)
-            self.pitch_spin.SetValue(2.5)
+        is_vocal_cover = (self.mode_choice.GetSelection() == 0) if hasattr(self, "mode_choice") else False
+        if idx == 0:  # Complete Sanitization
+            self.pitch_spin.SetValue(2.0 if is_vocal_cover else 2.5)
+            self.formant_spin.SetValue(2.0)
             self.tempo_spin.SetValue(0.940)
-            self.format_choice.SetSelection(0)  # WAV
+            self.reverb_spin.SetValue(18.0)
+            self.vocal_duck_spin.SetValue(12.0)
+            self.watermark_chk.SetValue(True)
+            self.psycho_chk.SetValue(True)
+            self.format_choice.SetSelection(0)
             self.trim_chk.SetValue(False)
-            self.trim_spin.SetValue(24.0)
-            self.trim_spin.Enable(False)
             self.jitter_chk.SetValue(True)
-            self.bode_chk.SetValue(True)
+            self.bode_chk.SetValue(not is_vocal_cover)
             self.decoy_chk.SetValue(True)
             self.allpass_chk.SetValue(True)
             self.reamping_chk.SetValue(True)
-            self.vocal_chk.SetValue(True)
-            self.preamble_chk.SetValue(True)
-        elif idx == 1:  # Balanced Audio Quality
+            self.vocal_chk.SetValue(not is_vocal_cover)
+            self.articulation_chk.SetValue(is_vocal_cover)
+            self.preamble_chk.SetValue(not is_vocal_cover)
+        elif idx == 1:  # Balanced Quality
             self.pitch_spin.SetValue(1.5)
+            self.formant_spin.SetValue(1.0)
             self.tempo_spin.SetValue(0.970)
-            self.format_choice.SetSelection(0)  # WAV
+            self.reverb_spin.SetValue(12.0)
+            self.vocal_duck_spin.SetValue(8.0)
+            self.watermark_chk.SetValue(True)
+            self.psycho_chk.SetValue(True)
+            self.format_choice.SetSelection(0)
             self.trim_chk.SetValue(False)
-            self.trim_spin.SetValue(28.0)
-            self.trim_spin.Enable(False)
             self.jitter_chk.SetValue(True)
-            self.bode_chk.SetValue(True)
+            self.bode_chk.SetValue(not is_vocal_cover)
             self.decoy_chk.SetValue(False)
             self.allpass_chk.SetValue(True)
             self.reamping_chk.SetValue(True)
-            self.vocal_chk.SetValue(True)
+            self.vocal_chk.SetValue(not is_vocal_cover)
+            self.articulation_chk.SetValue(is_vocal_cover)
             self.preamble_chk.SetValue(False)
-        elif idx == 2:  # Room Acoustic Simulation
+        elif idx == 2:  # Room Simulation
             self.pitch_spin.SetValue(1.0)
+            self.formant_spin.SetValue(1.0)
             self.tempo_spin.SetValue(0.980)
-            self.trim_chk.SetValue(False)
-            self.trim_spin.Enable(False)
+            self.reverb_spin.SetValue(25.0)
+            self.vocal_duck_spin.SetValue(6.0)
             self.jitter_chk.SetValue(False)
             self.bode_chk.SetValue(False)
             self.decoy_chk.SetValue(False)
@@ -2271,9 +3461,9 @@ class AudioSanitizerPanel(wx.Panel):
             self.preamble_chk.SetValue(True)
         elif idx == 3:  # Frequency & Phase Shift
             self.pitch_spin.SetValue(2.0)
+            self.formant_spin.SetValue(2.0)
             self.tempo_spin.SetValue(0.950)
-            self.trim_chk.SetValue(False)
-            self.trim_spin.Enable(False)
+            self.reverb_spin.SetValue(10.0)
             self.jitter_chk.SetValue(True)
             self.bode_chk.SetValue(True)
             self.decoy_chk.SetValue(True)
@@ -2283,9 +3473,10 @@ class AudioSanitizerPanel(wx.Panel):
             self.preamble_chk.SetValue(False)
         elif idx == 4:  # Vocal Reduction Only
             self.pitch_spin.SetValue(0.0)
+            self.formant_spin.SetValue(0.0)
             self.tempo_spin.SetValue(1.000)
-            self.trim_chk.SetValue(False)
-            self.trim_spin.Enable(False)
+            self.reverb_spin.SetValue(0.0)
+            self.vocal_duck_spin.SetValue(18.0)
             self.jitter_chk.SetValue(False)
             self.bode_chk.SetValue(False)
             self.decoy_chk.SetValue(False)
@@ -2295,10 +3486,11 @@ class AudioSanitizerPanel(wx.Panel):
             self.preamble_chk.SetValue(False)
         elif idx == 5:  # Cloud API Stem Isolation
             self.pitch_spin.SetValue(2.0)
+            self.formant_spin.SetValue(2.0)
             self.tempo_spin.SetValue(0.950)
-            self.format_choice.SetSelection(0)  # WAV
-            self.trim_chk.SetValue(False)
-            self.trim_spin.Enable(False)
+            self.reverb_spin.SetValue(15.0)
+            self.vocal_duck_spin.SetValue(14.0)
+            self.format_choice.SetSelection(0)
             self.jitter_chk.SetValue(True)
             self.bode_chk.SetValue(True)
             self.decoy_chk.SetValue(False)
@@ -2314,11 +3506,37 @@ class AudioSanitizerPanel(wx.Panel):
 
     def on_audit(self, event: wx.CommandEvent):
         if not self.selected_file_path or not self.last_output_path:
-            wx.MessageBox("Please process an audio file first to generate the audit report.", "No File", wx.OK | wx.ICON_INFORMATION, self)
+            wx.MessageBox(
+                tr("AUDIO_AUDIT_NEED_PROCESS_MSG"),
+                tr("AUDIO_AUDIT_NEED_PROCESS_TITLE"),
+                wx.OK | wx.ICON_INFORMATION,
+                self
+            )
             return
 
         metrics = benchmark_evasion_metrics(self.selected_file_path, self.last_output_path)
         dlg = EvasionAuditDialog(self, metrics, self.selected_file_path, self.last_output_path)
+        dlg.ShowModal()
+        dlg.Destroy()
+
+    def on_preflight(self, event: wx.CommandEvent):
+        if not self.selected_file_path or not self.last_output_path:
+            is_id = (get_language() == "id")
+            msg = "Silakan proses audio terlebih dahulu untuk menjalankan simulasi lolos AI." if is_id else "Please process an audio file first to run the AI evasion simulation."
+            title = "Belum Ada Berkas Hasil" if is_id else "No Processed Audio File"
+            wx.MessageBox(
+                msg,
+                title,
+                wx.OK | wx.ICON_INFORMATION,
+                self
+            )
+            return
+        dlg = PreFlightEvasionDialog(self, self.selected_file_path, self.last_output_path, self.processor)
+        dlg.ShowModal()
+        dlg.Destroy()
+
+    def on_batch(self, event: wx.CommandEvent):
+        dlg = BatchProcessingDialog(self, self.processor, self._get_current_options)
         dlg.ShowModal()
         dlg.Destroy()
 
@@ -2346,7 +3564,7 @@ class AudioSanitizerPanel(wx.Panel):
         )
         with wx.FileDialog(
             self,
-            message="Choose an audio file to sanitize",
+            message=tr("AUDIO_BROWSE_TITLE"),
             wildcard=wildcard,
             style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST
         ) as file_dialog:
@@ -2358,11 +3576,47 @@ class AudioSanitizerPanel(wx.Panel):
     def load_file(self, file_path: str):
         self.selected_file_path = file_path
         self.file_path_ctrl.SetValue(file_path)
+        self.last_output_path = None
+        if hasattr(self, "play_sani_btn"):
+            self.play_sani_btn.Enable(False)
+        if hasattr(self, "play_delta_btn"):
+            self.play_delta_btn.Enable(False)
+        if hasattr(self, "audit_btn"):
+            self.audit_btn.Enable(False)
+        if hasattr(self, "preflight_btn"):
+            self.preflight_btn.Enable(False)
         try:
             info = self.processor.inspect_file(file_path)
             self.file_info_text.SetLabel(f"Audio Specifications: {info.summary_text}")
             self.log_ctrl.AppendText(f"Loaded source file: {os.path.basename(file_path)}\n{info.summary_text}\n\n")
             self.set_status(f"Loaded file: {os.path.basename(file_path)} ({info.duration_formatted})")
+
+            # Key & BPM detection & Recommendation
+            if hasattr(self, "key_bpm_label"):
+                bpm_str = f"{info.bpm:.0f}" if info.bpm else "N/A"
+                key_str = info.musical_key or "N/A"
+                self.key_bpm_label.SetLabel(tr("AUDIO_KEY_BPM_FORMAT", key=key_str, bpm=bpm_str))
+            if hasattr(self, "apply_rec_btn"):
+                if info.recommended_transpositions:
+                    rec_val, rec_key = info.recommended_transpositions[0]
+                    self._recommended_pitch = float(rec_val)
+                    self._recommended_key = str(rec_key)
+                    rec_display = f"{self._recommended_pitch:+.1f} st ({self._recommended_key})"
+                    self.apply_rec_btn.SetLabel(tr("AUDIO_BTN_APPLY_REC", rec=rec_display))
+                    self.apply_rec_btn.Enable(True)
+                else:
+                    self._recommended_pitch = None
+                    self._recommended_key = None
+                    self.apply_rec_btn.Enable(False)
+
+            # Update visualizer & audition
+            if hasattr(self, "visualizer"):
+                self.visualizer.set_original_audio(file_path)
+                if hasattr(self, "vis_summary_lbl"):
+                    self.vis_summary_lbl.SetValue(self.visualizer.get_accessible_summary())
+            if hasattr(self, "play_orig_btn"):
+                self.play_orig_btn.Enable(True)
+
             top = self.GetTopLevelParent()
             if top and hasattr(top, "SetTitle"):
                 top.SetTitle(f"GhostWave Studio v{APP_VERSION} - [{os.path.basename(file_path)}]")
@@ -2370,12 +3624,184 @@ class AudioSanitizerPanel(wx.Panel):
             self.file_info_text.SetLabel(f"Audio Specifications: Error reading file ({str(ex)})")
             self.set_status("Error loading audio file.")
 
+    def on_apply_rec_pitch(self, event: wx.CommandEvent):
+        if getattr(self, "_recommended_pitch", None) is not None and hasattr(self, "pitch_spin"):
+            self.pitch_spin.SetValue(float(self._recommended_pitch))
+            msg = f"Applying recommended pitch: {self._recommended_pitch:+.1f} st" if get_language() == "en" else f"Menerapkan transposisi nada rekomendasi: {self._recommended_pitch:+.1f} semitone"
+            self.set_status(msg)
+
+    def on_play_original(self, event: Optional[wx.CommandEvent] = None):
+        if not self.selected_file_path or not os.path.exists(self.selected_file_path):
+            return
+        fname = os.path.basename(self.selected_file_path)
+        self.play_audio_file(
+            self.selected_file_path,
+            status_text=tr("AUDIO_BTN_PLAY_ORIG_STATUS", file=fname)
+        )
+
+    def on_play_sanitized(self, event: Optional[wx.CommandEvent] = None):
+        if not self.last_output_path or not os.path.exists(self.last_output_path):
+            return
+        fname = os.path.basename(self.last_output_path)
+        self.play_audio_file(
+            self.last_output_path,
+            status_text=tr("AUDIO_BTN_PLAY_SANI_STATUS", file=fname)
+        )
+
+    def on_play_delta(self, event: Optional[wx.CommandEvent] = None):
+        if not self.selected_file_path or not self.last_output_path:
+            return
+        try:
+            d1, sr1 = load_audio_samples(self.selected_file_path, target_sr=44100)
+            d2, sr2 = load_audio_samples(self.last_output_path, target_sr=44100)
+            if d1.ndim == 1:
+                d1 = np.column_stack([d1, d1])
+            if d2.ndim == 1:
+                d2 = np.column_stack([d2, d2])
+            min_len = min(len(d1), len(d2), int(sr1 * 30))
+            delta = (d2[:min_len] - d1[:min_len]) * 2.5
+            delta = np.clip(delta, -0.98, 0.98)
+            fname = os.path.basename(self.selected_file_path)
+            self.play_audio_data(
+                delta.astype(np.float32),
+                sr=sr1,
+                status_text=tr("AUDIO_STATUS_DELTA_PLAYING", file=fname)
+            )
+        except Exception as ex:
+            self.log_ctrl.AppendText(f"Could not generate Delta preview: {ex}\n")
+            self.set_status(f"Error previewing Delta: {ex}")
+
+    def on_stop_playback(self, event: Optional[wx.CommandEvent] = None):
+        if sd:
+            try:
+                sd.stop()
+            except Exception:
+                pass
+        if winsound:
+            try:
+                winsound.PlaySound(None, 0)
+            except Exception:
+                pass
+        self.set_status(tr("AUDIO_STATUS_STOPPED"))
+
+    def play_audio_file(self, path: str, status_text: Optional[str] = None):
+        try:
+            data, sr = load_audio_samples(path, target_sr=44100)
+            max_s = min(len(data), int(sr * 30))
+            self.play_audio_data(
+                data[:max_s],
+                sr=sr,
+                status_text=status_text or tr("AUDIO_STATUS_PLAYING", file=os.path.basename(path))
+            )
+        except Exception as ex:
+            self._fallback_play_file(path, status_text or tr("AUDIO_STATUS_PLAYING", file=os.path.basename(path)))
+
+    def play_audio_data(self, data: np.ndarray, sr: int = 44100, status_text: str = ""):
+        self.on_stop_playback()
+        if data is None or len(data) == 0:
+            return
+
+        mx = float(np.max(np.abs(data)))
+        if mx > 0.98:
+            data = (data / mx) * 0.95
+        data = np.ascontiguousarray(data, dtype=np.float32)
+
+        played_successfully = False
+        if sd:
+            try:
+                sd.play(data, sr)
+                played_successfully = True
+            except Exception:
+                played_successfully = False
+
+        if not played_successfully:
+            try:
+                temp_wav = os.path.join(tempfile.gettempdir(), "ghostwave_audition_temp.wav")
+                sf.write(temp_wav, data, sr, subtype='PCM_16')
+                if winsound:
+                    winsound.PlaySound(temp_wav, winsound.SND_ASYNC | winsound.SND_FILENAME)
+                    played_successfully = True
+            except Exception as ex:
+                self.set_status(tr("AUDIO_STATUS_PLAY_INFO", msg=str(ex)))
+                return
+
+        if status_text:
+            self.set_status(status_text)
+
+    def _fallback_play_file(self, path: str, status_text: str = ""):
+        if not winsound:
+            self.set_status(status_text)
+            return
+        try:
+            winsound.PlaySound(None, 0)
+            target = path
+            if not path.lower().endswith(".wav"):
+                d, sr = load_audio_samples(path, target_sr=44100)
+                temp_wav = os.path.join(tempfile.gettempdir(), "ghostwave_audition_temp.wav")
+                sf.write(temp_wav, d[:int(sr * 15)], sr, subtype='PCM_16')
+                target = temp_wav
+            winsound.PlaySound(target, winsound.SND_ASYNC | winsound.SND_FILENAME)
+            if status_text:
+                self.set_status(status_text)
+        except Exception as ex:
+            self.set_status(tr("AUDIO_STATUS_PLAY_INFO", msg=str(ex)))
+
+    def _get_current_options(self) -> AudioSanitizeOptions:
+        platform_keys = ["suno_v6", "google_lyria", "udio", "youtube", "tiktok", "custom"]
+        p_idx = self.platform_choice.GetSelection() if hasattr(self, "platform_choice") else 0
+        plat_code = platform_keys[p_idx] if 0 <= p_idx < len(platform_keys) else "suno_v6"
+        is_lyria = (plat_code == "google_lyria")
+
+        is_vocal_cover = (self.mode_choice.GetSelection() == 0) if hasattr(self, "mode_choice") else True
+        mode_val = "vocal_cover" if is_vocal_cover else "instrumental"
+        if hasattr(self, "preset_choice") and self.preset_choice.GetSelection() == 5:
+            mode_val = "cloud_api"
+
+        fmt_idx = self.format_choice.GetSelection() if hasattr(self, "format_choice") else 0
+        bitrate_opt = "wav" if fmt_idx == 0 else ("320k" if fmt_idx == 1 else "192k")
+
+        return AudioSanitizeOptions(
+            mode=mode_val,
+            target_platform=plat_code,
+            pitch_shift_semitones=0.0 if is_lyria else (float(self.pitch_spin.GetValue()) if hasattr(self, "pitch_spin") else 2.0),
+            tempo_factor=1.000 if is_lyria else (float(self.tempo_spin.GetValue()) if hasattr(self, "tempo_spin") else 0.940),
+            formant_shift_semitones=0.0 if is_lyria else (float(self.formant_spin.GetValue()) if hasattr(self, "formant_spin") else 2.0),
+            enable_ai_watermark_neutralizer=self.watermark_chk.IsChecked() if hasattr(self, "watermark_chk") else True,
+            use_psychoacoustic_masking=False if is_lyria else (self.psycho_chk.IsChecked() if hasattr(self, "psycho_chk") else True),
+            room_reverb_wet=0.0 if is_lyria else ((float(self.reverb_spin.GetValue()) / 100.0) if hasattr(self, "reverb_spin") else 0.18),
+            vocal_reduction_depth=0.0 if is_lyria else (float(self.vocal_duck_spin.GetValue()) if hasattr(self, "vocal_duck_spin") else 12.0),
+            enable_vocal_articulation_softener=False if is_lyria else (self.articulation_chk.IsChecked() if hasattr(self, "articulation_chk") else is_vocal_cover),
+            articulation_intensity=0.80,
+            consonant_cutoff_hz=2400.0,
+            vocal_guiding_duck_db=-3.5,
+            enable_micro_chrono_jitter=False if is_lyria else (self.jitter_chk.IsChecked() if hasattr(self, "jitter_chk") else True),
+            enable_bode_freq_shifter=False if is_lyria else (self.bode_chk.IsChecked() if hasattr(self, "bode_chk") else True),
+            enable_triple_band_bode=False if is_lyria else (self.bode_chk.IsChecked() and not is_vocal_cover if hasattr(self, "bode_chk") else False),
+            enable_adversarial_peaks=False if is_lyria else (self.decoy_chk.IsChecked() if hasattr(self, "decoy_chk") else True),
+            enable_phase_dispersion=False if is_lyria else (self.allpass_chk.IsChecked() if hasattr(self, "allpass_chk") else True),
+            enable_reamping_room=False if is_lyria else (self.reamping_chk.IsChecked() if hasattr(self, "reamping_chk") else True),
+            enable_total_vocal_cut=False if is_lyria else ((not is_vocal_cover) and (self.vocal_chk.IsChecked() if hasattr(self, "vocal_chk") else False)),
+            enable_vocal_cut=False if is_lyria else ((self.vocal_chk.IsChecked() if hasattr(self, "vocal_chk") else False) if not is_vocal_cover else False),
+            enable_formant_scrambler=False if is_lyria else ((self.vocal_chk.IsChecked() if hasattr(self, "vocal_chk") else False) if not is_vocal_cover else False),
+            enable_continuous_bed=False if is_lyria else ((not is_vocal_cover) and (self.preamble_chk.IsChecked() if hasattr(self, "preamble_chk") else False)),
+            inject_preamble=False if is_lyria else ((self.preamble_chk.IsChecked() if hasattr(self, "preamble_chk") else False) if not is_vocal_cover else False),
+            use_ambient_intro=is_vocal_cover and not is_lyria,
+            front_padding_seconds=0.0 if is_lyria else (1.0 if is_vocal_cover else 2.0),
+            tail_padding_seconds=0.0 if is_lyria else (1.0 if is_vocal_cover else 1.5),
+            apply_eq_filters=False if is_lyria else (self.filter_chk.IsChecked() if hasattr(self, "filter_chk") else True),
+            apply_dither=False if is_lyria else (self.dither_chk.IsChecked() if hasattr(self, "dither_chk") else True),
+            trim_duration=False if is_lyria else (self.trim_chk.IsChecked() if hasattr(self, "trim_chk") else False),
+            max_duration_seconds=float(self.trim_spin.GetValue()) if hasattr(self, "trim_spin") else 24.0,
+            strip_metadata=self.metadata_chk.IsChecked() if hasattr(self, "metadata_chk") else True,
+            output_bitrate=bitrate_opt
+        )
+
     def on_process(self, event: wx.CommandEvent):
         if not self.selected_file_path or not os.path.exists(self.selected_file_path):
             wx.Bell()
             wx.MessageBox(
-                "Please select a valid source audio file first.",
-                "No Audio File Selected",
+                tr("AUDIO_ERR_NO_FILE_MSG"),
+                tr("AUDIO_ERR_NO_FILE_TITLE"),
                 wx.OK | wx.ICON_WARNING,
                 self
             )
@@ -2392,21 +3818,18 @@ class AudioSanitizerPanel(wx.Panel):
         if fmt_idx == 0:
             default_ext = ".wav"
             wildcard = "WAV Audio (*.wav)|*.wav"
-            bitrate_opt = "wav"
         elif fmt_idx == 1:
             default_ext = ".mp3"
             wildcard = "MP3 Audio (*.mp3)|*.mp3"
-            bitrate_opt = "320k"
         else:
             default_ext = ".mp3"
             wildcard = "MP3 Audio (*.mp3)|*.mp3"
-            bitrate_opt = "192k"
 
         default_out_name = f"{stem}_suno_ready{default_ext}"
 
         with wx.FileDialog(
             self,
-            message="Save Sanitized Audio File",
+            message=tr("AUDIO_SAVE_TITLE"),
             defaultDir=str(input_p.parent),
             defaultFile=default_out_name,
             wildcard=wildcard,
@@ -2416,42 +3839,7 @@ class AudioSanitizerPanel(wx.Panel):
                 return
             output_path = save_dialog.GetPath()
 
-        mode_idx = self.mode_choice.GetSelection() if hasattr(self, "mode_choice") else 0
-        is_vocal_cover = (mode_idx == 0)
-        preset_idx = self.preset_choice.GetSelection()
-
-        if preset_idx == 5:
-            mode_val = "cloud_api"
-        elif is_vocal_cover:
-            mode_val = "vocal_cover"
-        else:
-            mode_val = "instrumental"
-
-        options = AudioSanitizeOptions(
-            mode=mode_val,
-            pitch_shift_semitones=float(self.pitch_spin.GetValue()),
-            tempo_factor=float(self.tempo_spin.GetValue()),
-            enable_vocal_articulation_softener=self.articulation_chk.IsChecked() if hasattr(self, "articulation_chk") else is_vocal_cover,
-            enable_micro_chrono_jitter=self.jitter_chk.IsChecked(),
-            enable_bode_freq_shifter=self.bode_chk.IsChecked(),
-            enable_triple_band_bode=self.bode_chk.IsChecked() and not is_vocal_cover,
-            enable_adversarial_peaks=self.decoy_chk.IsChecked(),
-            enable_phase_dispersion=self.allpass_chk.IsChecked(),
-            enable_reamping_room=self.reamping_chk.IsChecked(),
-            enable_total_vocal_cut=(not is_vocal_cover) and self.vocal_chk.IsChecked(),
-            enable_vocal_cut=self.vocal_chk.IsChecked() if not is_vocal_cover else False,
-            enable_formant_scrambler=self.vocal_chk.IsChecked() if not is_vocal_cover else False,
-            enable_continuous_bed=(not is_vocal_cover) and self.preamble_chk.IsChecked(),
-            inject_preamble=self.preamble_chk.IsChecked(),
-            use_ambient_intro=False,
-            apply_eq_filters=self.filter_chk.IsChecked(),
-            apply_dither=self.dither_chk.IsChecked(),
-            trim_duration=self.trim_chk.IsChecked(),
-            max_duration_seconds=float(self.trim_spin.GetValue()),
-            strip_metadata=self.metadata_chk.IsChecked(),
-            output_bitrate=bitrate_opt
-        )
-
+        options = self._get_current_options()
         self._start_processing_thread(self.selected_file_path, output_path, options)
 
     def _start_processing_thread(self, input_path: str, output_path: str, options: AudioSanitizeOptions):
@@ -2507,6 +3895,16 @@ class AudioSanitizerPanel(wx.Panel):
         if result.success:
             self.last_output_path = result.output_path
             self.audit_btn.Enable(True)
+            if hasattr(self, "preflight_btn"):
+                self.preflight_btn.Enable(True)
+            if hasattr(self, "play_sani_btn"):
+                self.play_sani_btn.Enable(True)
+            if hasattr(self, "play_delta_btn"):
+                self.play_delta_btn.Enable(True)
+            if hasattr(self, "visualizer"):
+                self.visualizer.set_sanitized_audio(result.output_path)
+                if hasattr(self, "vis_summary_lbl"):
+                    self.vis_summary_lbl.SetValue(self.visualizer.get_accessible_summary())
             self.set_status(f"Export complete: {os.path.basename(result.output_path)}")
 
             audit_txt = ""
@@ -2667,8 +4065,95 @@ class AudioSanitizerPanel(wx.Panel):
         if hasattr(self, "log_ctrl"):
             self.log_ctrl.SetToolTip(tr("TIP_AUDIO_LOG"))
 
+        if hasattr(self, "platform_label"):
+            self.platform_label.SetLabel(tr("AUDIO_LABEL_PLATFORM"))
+        if hasattr(self, "platform_choice"):
+            cur_p = self.platform_choice.GetSelection()
+            self.platform_choice.Clear()
+            self.platform_choice.Append(tr("AUDIO_PLATFORM_SUNO"))
+            self.platform_choice.Append(tr("AUDIO_PLATFORM_LYRIA"))
+            self.platform_choice.Append(tr("AUDIO_PLATFORM_UDIO"))
+            self.platform_choice.Append(tr("AUDIO_PLATFORM_YOUTUBE"))
+            self.platform_choice.Append(tr("AUDIO_PLATFORM_TIKTOK"))
+            self.platform_choice.Append(tr("AUDIO_PLATFORM_CUSTOM"))
+            self.platform_choice.SetSelection(cur_p if 0 <= cur_p < 6 else 0)
 
-class LyricsSanitizerPanel(wx.Panel):
+        if hasattr(self, "modular_box"):
+            self.modular_box.SetLabel(tr("AUDIO_MODULAR_BOX"))
+        if hasattr(self, "pitch_lbl"):
+            self.pitch_lbl.SetLabel(tr("AUDIO_SLIDER_PITCH"))
+        if hasattr(self, "formant_lbl"):
+            self.formant_lbl.SetLabel(tr("AUDIO_SLIDER_FORMANT"))
+        if hasattr(self, "tempo_lbl"):
+            self.tempo_lbl.SetLabel(tr("AUDIO_SLIDER_TEMPO"))
+        if hasattr(self, "reverb_lbl"):
+            self.reverb_lbl.SetLabel(tr("AUDIO_SLIDER_REVERB"))
+        if hasattr(self, "vocal_duck_lbl"):
+            self.vocal_duck_lbl.SetLabel(tr("AUDIO_SLIDER_VOCAL"))
+
+        if hasattr(self, "pitch_spin"):
+            make_accessible_control(self.pitch_spin, lambda: tr("AUDIO_SLIDER_PITCH"), lambda: tr("TIP_AUDIO_PITCH"))
+        if hasattr(self, "formant_spin"):
+            make_accessible_control(self.formant_spin, lambda: tr("AUDIO_SLIDER_FORMANT"), lambda: tr("TIP_AUDIO_FORMANT"))
+        if hasattr(self, "tempo_spin"):
+            make_accessible_control(self.tempo_spin, lambda: tr("AUDIO_SLIDER_TEMPO"), lambda: tr("TIP_AUDIO_TEMPO"))
+        if hasattr(self, "reverb_spin"):
+            make_accessible_control(self.reverb_spin, lambda: tr("AUDIO_SLIDER_REVERB"), lambda: tr("TIP_AUDIO_REVERB"))
+        if hasattr(self, "vocal_duck_spin"):
+            make_accessible_control(self.vocal_duck_spin, lambda: tr("AUDIO_SLIDER_VOCAL"), lambda: tr("TIP_AUDIO_VOCAL_DUCK"))
+
+        if hasattr(self, "watermark_chk"):
+            self.watermark_chk.SetLabel(tr("AUDIO_CHK_WATERMARK"))
+            self.watermark_chk.SetToolTip(tr("TIP_AUDIO_WATERMARK"))
+        if hasattr(self, "psycho_chk"):
+            self.psycho_chk.SetLabel(tr("AUDIO_CHK_PSYCHO"))
+            self.psycho_chk.SetToolTip(tr("TIP_AUDIO_PSYCHO"))
+
+        if hasattr(self, "preflight_btn"):
+            self.preflight_btn.SetLabel(tr("AUDIO_BTN_PREFLIGHT"))
+            self.preflight_btn.SetToolTip(tr("TIP_PREFLIGHT_BTN"))
+        if hasattr(self, "batch_btn"):
+            self.batch_btn.SetLabel(tr("AUDIO_BTN_BATCH"))
+            self.batch_btn.SetToolTip(tr("TIP_BATCH_BTN"))
+        if hasattr(self, "slicer_btn"):
+            self.slicer_btn.SetLabel(tr("AUDIO_BTN_SLICER"))
+        if hasattr(self, "protocol_btn"):
+            self.protocol_btn.SetLabel(tr("AUDIO_BTN_PROTOCOL"))
+        if hasattr(self, "seconds_label"):
+            self.seconds_label.SetLabel(tr("AUDIO_UNIT_SECONDS"))
+        if hasattr(self, "log_label"):
+            self.log_label.SetLabel(tr("AUDIO_GROUP_LOGS"))
+
+        if hasattr(self, "vis_box"):
+            self.vis_box.SetLabel(tr("AUDIO_VIS_GROUP"))
+        if hasattr(self, "vis_summary_lbl") and hasattr(self, "visualizer"):
+            summary = self.visualizer.get_accessible_summary()
+            self.vis_summary_lbl.SetValue(summary)
+            self.visualizer.SetName(summary)
+
+        if hasattr(self, "play_orig_btn"):
+            self.play_orig_btn.SetLabel(tr("AUDIO_BTN_PLAY_ORIG"))
+            self.play_orig_btn.SetToolTip(tr("AUDIO_BTN_PLAY_ORIG"))
+        if hasattr(self, "play_sani_btn"):
+            self.play_sani_btn.SetLabel(tr("AUDIO_BTN_PLAY_SANI"))
+            self.play_sani_btn.SetToolTip(tr("AUDIO_BTN_PLAY_SANI"))
+        if hasattr(self, "play_delta_btn"):
+            self.play_delta_btn.SetLabel(tr("AUDIO_BTN_PLAY_DELTA"))
+            self.play_delta_btn.SetToolTip(tr("AUDIO_BTN_PLAY_DELTA"))
+        if hasattr(self, "stop_play_btn"):
+            self.stop_play_btn.SetLabel(tr("AUDIO_BTN_STOP_PLAY"))
+            self.stop_play_btn.SetToolTip(tr("AUDIO_BTN_STOP_PLAY"))
+
+        if hasattr(self, "key_bpm_label") and not self.selected_file_path:
+            self.key_bpm_label.SetLabel(tr("AUDIO_KEY_BPM_NONE"))
+        if hasattr(self, "apply_rec_btn") and getattr(self, "_recommended_pitch", None) is not None:
+            rec_display = f"{self._recommended_pitch:+.1f} st ({getattr(self, '_recommended_key', '')})"
+            self.apply_rec_btn.SetLabel(tr("AUDIO_BTN_APPLY_REC", rec=rec_display))
+        if hasattr(self, "visualizer"):
+            self.visualizer.Refresh()
+
+
+class LyricsSanitizerPanel(scrolled.ScrolledPanel):
     """
     Accessible Tab for sanitizing, moderating, and formatting lyrics for Suno AI.
     """
@@ -2705,7 +4190,7 @@ class LyricsSanitizerPanel(wx.Panel):
             size=(-1, 130),
             name="Original Lyrics Input"
         )
-        self.input_text_ctrl.SetToolTip(tr("TIP_LYRICS_INPUT"))
+        make_accessible_control(self.input_text_ctrl, lambda: tr("LYRICS_INPUT_LABEL"), lambda: tr("TIP_LYRICS_INPUT"))
         self.input_text_ctrl.Bind(wx.EVT_TEXT, self.on_input_text_changed)
         main_sizer.Add(self.input_text_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
@@ -2835,6 +4320,15 @@ class LyricsSanitizerPanel(wx.Panel):
         self.syllable_chk.SetToolTip(tr("TIP_LYRICS_SYLLABLE"))
         toggles_sizer.Add(self.syllable_chk, 0, wx.RIGHT, 15)
 
+        self.rhyme_chk = wx.CheckBox(
+            self,
+            label=tr("LYRICS_PRESERVE_RHYMES"),
+            name="Preserve Rhyme Scheme and Cadence"
+        )
+        self.rhyme_chk.SetValue(True)
+        self.rhyme_chk.SetToolTip(tr("TIP_LYRICS_RHYME"))
+        toggles_sizer.Add(self.rhyme_chk, 0, wx.RIGHT, 15)
+
         self.ngram_chk = wx.CheckBox(
             self,
             label=tr("LYRICS_BREAK_NGRAMS"),
@@ -2859,6 +4353,15 @@ class LyricsSanitizerPanel(wx.Panel):
         self.sanitize_btn.Bind(wx.EVT_BUTTON, self.on_sanitize)
         self.sanitize_btn.SetDefault()
         action_sizer.Add(self.sanitize_btn, 0, wx.RIGHT, 10)
+
+        self.prompt_btn = wx.Button(
+            self,
+            label=tr("LYRICS_BTN_SUNO_PROMPT"),
+            name="Generate Suno Style Prompt Button"
+        )
+        self.prompt_btn.SetToolTip(tr("TIP_LYRICS_PROMPT_BTN"))
+        self.prompt_btn.Bind(wx.EVT_BUTTON, self.on_prompt_gen)
+        action_sizer.Add(self.prompt_btn, 0, wx.RIGHT, 10)
 
         self.copy_btn = wx.Button(
             self,
@@ -2902,7 +4405,7 @@ class LyricsSanitizerPanel(wx.Panel):
             size=(-1, 130),
             name="Sanitized Lyrics Output"
         )
-        self.output_text_ctrl.SetToolTip(tr("TIP_LYRICS_OUTPUT"))
+        make_accessible_control(self.output_text_ctrl, lambda: tr("LYRICS_OUTPUT_LABEL"), lambda: tr("TIP_LYRICS_OUTPUT"))
         out_splitter.Add(self.output_text_ctrl, 1, wx.EXPAND | wx.BOTTOM, 8)
 
         self.changes_label = wx.StaticText(self, label=tr("LYRICS_GROUP_AUDIT"))
@@ -2915,18 +4418,34 @@ class LyricsSanitizerPanel(wx.Panel):
             size=(-1, 120),
             name="Changes Made"
         )
-        self.changes_ctrl.SetToolTip(tr("TIP_LYRICS_CHANGES"))
+        make_accessible_control(self.changes_ctrl, lambda: tr("LYRICS_GROUP_AUDIT"), lambda: tr("TIP_LYRICS_CHANGES"))
         out_splitter.Add(self.changes_ctrl, 1, wx.EXPAND)
 
         main_sizer.Add(out_splitter, 2, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         self.SetSizer(main_sizer)
+        self.SetupScrolling(scroll_x=False, scroll_y=True)
 
     def on_edit_blacklist(self, event: wx.CommandEvent):
         dlg = BlacklistDialog(self, self.processor)
         dlg.ShowModal()
         dlg.Destroy()
         self.set_status(f"Celebrity blacklist updated ({len(self.processor.celebrity_blacklist)} entries).")
+
+    def on_prompt_gen(self, event: wx.CommandEvent):
+        bpm = None
+        key = None
+        top = self.GetTopLevelParent()
+        if top and hasattr(top, "audio_tab") and hasattr(top.audio_tab, "processor") and top.audio_tab.selected_file_path:
+            try:
+                info = top.audio_tab.processor.inspect_file(top.audio_tab.selected_file_path)
+                bpm = info.bpm
+                key = info.musical_key
+            except Exception:
+                pass
+        dlg = SunoPromptDialog(self, self.input_text_ctrl, detected_bpm=bpm, detected_key=key)
+        dlg.ShowModal()
+        dlg.Destroy()
 
     def on_cloud_llm_settings(self, event: wx.CommandEvent):
         dlg = LyricsCloudDialog(self)
@@ -2985,7 +4504,6 @@ class LyricsSanitizerPanel(wx.Panel):
         mode_map = ["scramble", "hybrid", "phonetic", "semantic", "cloud"]
         selected_mode = mode_map[mode_idx] if mode_idx < len(mode_map) else "scramble"
 
-        from config_manager import GhostWaveConfig
         sn_cfg = GhostWaveConfig.load()
 
         result: LyricsSanitizeResult = self.processor.sanitize(
@@ -2999,6 +4517,7 @@ class LyricsSanitizerPanel(wx.Panel):
             cloak_mode=selected_mode,
             add_vibrato_glides=self.vibrato_chk.IsChecked(),
             preserve_syllables=self.syllable_chk.IsChecked(),
+            preserve_rhymes=self.rhyme_chk.IsChecked() if hasattr(self, "rhyme_chk") else True,
             break_ngrams=self.ngram_chk.IsChecked(),
             cloud_token=sn_cfg.lyrics_cloud_api_token,
             cloud_provider=sn_cfg.lyrics_cloud_provider,
@@ -3175,13 +4694,19 @@ class LyricsSanitizerPanel(wx.Panel):
             self.output_text_ctrl.SetToolTip(tr("TIP_LYRICS_OUTPUT"))
         if hasattr(self, "changes_ctrl"):
             self.changes_ctrl.SetToolTip(tr("TIP_LYRICS_CHANGES"))
+        if hasattr(self, "rhyme_chk"):
+            self.rhyme_chk.SetLabel(tr("LYRICS_PRESERVE_RHYMES"))
+            self.rhyme_chk.SetToolTip(tr("TIP_LYRICS_RHYME"))
+        if hasattr(self, "prompt_btn"):
+            self.prompt_btn.SetLabel(tr("LYRICS_BTN_SUNO_PROMPT"))
+            self.prompt_btn.SetToolTip(tr("TIP_LYRICS_PROMPT_BTN"))
 
         self.on_input_text_changed(None)
 
 
 class GhostWaveFrame(wx.Frame):
     """
-    Main Application Window for GhostWave Studio - Next-Gen Stealth Audio Cloak.
+    Main Application Window for GhostWave Studio.
     """
 
     def __init__(self):
@@ -3260,6 +4785,12 @@ class GhostWaveFrame(wx.Frame):
     def on_close(self, event: wx.CloseEvent):
         """Safely saves active language and UI state into encrypted vault on exit."""
         try:
+            if hasattr(self, "audio_tab") and hasattr(self.audio_tab, "on_stop_playback"):
+                self.audio_tab.on_stop_playback()
+        except Exception:
+            pass
+
+        try:
             cfg = GhostWaveConfig.load()
             cfg.language = get_language()
             cfg.first_run = False
@@ -3302,12 +4833,15 @@ class GhostWaveFrame(wx.Frame):
         # Actions Menu
         self.action_menu = wx.Menu()
         self.process_audio_item = self.action_menu.Append(wx.ID_ANY, tr("MENU_PROCESS_AUDIO"), tr("HELP_PROCESS_AUDIO"))
+        self.preflight_item = self.action_menu.Append(wx.ID_ANY, tr("MENU_PREFLIGHT"), tr("HELP_PREFLIGHT"))
+        self.batch_item = self.action_menu.Append(wx.ID_ANY, f"{tr('AUDIO_BTN_BATCH')}\tCtrl+Shift+B", tr("HELP_BATCH"))
         self.audit_item = self.action_menu.Append(wx.ID_ANY, tr("MENU_AUDIT"), tr("HELP_AUDIT"))
         self.slicer_item = self.action_menu.Append(wx.ID_ANY, tr("MENU_SLICER"), tr("HELP_SLICER"))
         self.protocol_item = self.action_menu.Append(wx.ID_ANY, tr("MENU_PROTOCOL"), tr("HELP_PROTOCOL"))
         self.cloud_item = self.action_menu.Append(wx.ID_ANY, tr("MENU_CLOUD_SETTINGS"), tr("HELP_CLOUD_SETTINGS"))
         self.action_menu.AppendSeparator()
         self.sanitize_lyrics_item = self.action_menu.Append(wx.ID_ANY, tr("MENU_SANITIZE_LYRICS"), tr("HELP_SANITIZE_LYRICS"))
+        self.prompt_item = self.action_menu.Append(wx.ID_ANY, tr("LYRICS_BTN_SUNO_PROMPT"), tr("HELP_PROMPT_GEN"))
         self.menu_bar.Append(self.action_menu, tr("MENU_ACTIONS"))
 
         # Language Menu
@@ -3333,10 +4867,18 @@ class GhostWaveFrame(wx.Frame):
 
         self.SetMenuBar(self.menu_bar)
 
+        self.tab_audio_id = wx.NewIdRef()
+        self.tab_lyrics_id = wx.NewIdRef()
         accel_entries = [
             wx.AcceleratorEntry(wx.ACCEL_NORMAL, wx.WXK_F2, self.changelog_item.GetId()),
+            wx.AcceleratorEntry(wx.ACCEL_ALT, ord('F'), self.preflight_item.GetId()),
+            wx.AcceleratorEntry(wx.ACCEL_CTRL | wx.ACCEL_SHIFT, ord('B'), self.batch_item.GetId()),
+            wx.AcceleratorEntry(wx.ACCEL_ALT, ord('1'), self.tab_audio_id),
+            wx.AcceleratorEntry(wx.ACCEL_ALT, ord('2'), self.tab_lyrics_id),
         ]
         self.SetAcceleratorTable(wx.AcceleratorTable(accel_entries))
+        self.Bind(wx.EVT_MENU, lambda e: self.notebook.SetSelection(0), id=self.tab_audio_id)
+        self.Bind(wx.EVT_MENU, lambda e: self.notebook.SetSelection(1), id=self.tab_lyrics_id)
 
         # Bind Menu Events
         self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_browse(e), self.open_item)
@@ -3346,6 +4888,8 @@ class GhostWaveFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, lambda e: self.lyrics_tab.on_edit_blacklist(e), self.blacklist_item)
         self.Bind(wx.EVT_MENU, lambda e: self.lyrics_tab.on_copy(e), self.copy_item)
         self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_process(e), self.process_audio_item)
+        self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_preflight(e), self.preflight_item)
+        self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_batch(e), self.batch_item)
         self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_audit(e), self.audit_item)
         self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_slicer(e), self.slicer_item)
         self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_protocol(e), self.protocol_item)
@@ -3357,6 +4901,7 @@ class GhostWaveFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, self.on_check_updates_menu, self.check_update_item)
         self.Bind(wx.EVT_MENU, lambda e: self.audio_tab.on_cloud_settings(e), self.cloud_item)
         self.Bind(wx.EVT_MENU, lambda e: self.lyrics_tab.on_sanitize(e), self.sanitize_lyrics_item)
+        self.Bind(wx.EVT_MENU, lambda e: self.lyrics_tab.on_prompt_gen(e), self.prompt_item)
         self.Bind(wx.EVT_MENU, self.on_accessibility_guide, self.a11y_item)
         self.Bind(wx.EVT_MENU, self.on_about, self.about_item)
 
@@ -3409,6 +4954,12 @@ class GhostWaveFrame(wx.Frame):
 
         self.process_audio_item.SetItemLabel(tr("MENU_PROCESS_AUDIO"))
         self.process_audio_item.SetHelp(tr("HELP_PROCESS_AUDIO"))
+        if hasattr(self, "preflight_item"):
+            self.preflight_item.SetItemLabel(tr("MENU_PREFLIGHT"))
+            self.preflight_item.SetHelp(tr("HELP_PREFLIGHT"))
+        if hasattr(self, "batch_item"):
+            self.batch_item.SetItemLabel(f"{tr('AUDIO_BTN_BATCH')}\tCtrl+Shift+B")
+            self.batch_item.SetHelp(tr("HELP_BATCH"))
         self.audit_item.SetItemLabel(tr("MENU_AUDIT"))
         self.audit_item.SetHelp(tr("HELP_AUDIT"))
         self.slicer_item.SetItemLabel(tr("MENU_SLICER"))
@@ -3419,6 +4970,9 @@ class GhostWaveFrame(wx.Frame):
         self.cloud_item.SetHelp(tr("HELP_CLOUD_SETTINGS"))
         self.sanitize_lyrics_item.SetItemLabel(tr("MENU_SANITIZE_LYRICS"))
         self.sanitize_lyrics_item.SetHelp(tr("HELP_SANITIZE_LYRICS"))
+        if hasattr(self, "prompt_item"):
+            self.prompt_item.SetItemLabel(tr("LYRICS_BTN_SUNO_PROMPT"))
+            self.prompt_item.SetHelp(tr("HELP_PROMPT_GEN"))
 
         self.lang_en_item.SetItemLabel(tr("MENU_LANG_EN"))
         self.lang_en_item.SetHelp(tr("HELP_LANG_EN"))
@@ -3466,8 +5020,16 @@ class GhostWaveFrame(wx.Frame):
                 cfg = GhostWaveConfig.load()
                 # Synchronize current UI controls
                 cfg.default_preset = self.audio_tab.preset_choice.GetStringSelection()
+                platform_keys = ["suno_v6", "google_lyria", "udio", "youtube", "tiktok", "custom"]
+                p_idx = self.audio_tab.platform_choice.GetSelection()
+                cfg.target_platform = platform_keys[p_idx] if 0 <= p_idx < len(platform_keys) else "suno_v6"
                 cfg.pitch_shift_semitones = float(self.audio_tab.pitch_spin.GetValue())
+                cfg.formant_shift_semitones = float(self.audio_tab.formant_spin.GetValue())
                 cfg.tempo_factor = float(self.audio_tab.tempo_spin.GetValue())
+                cfg.room_reverb_wet = float(self.audio_tab.reverb_spin.GetValue()) / 100.0
+                cfg.vocal_reduction_depth = float(self.audio_tab.vocal_duck_spin.GetValue())
+                cfg.enable_ai_watermark_neutralizer = bool(self.audio_tab.watermark_chk.IsChecked())
+                cfg.use_psychoacoustic_masking = bool(self.audio_tab.psycho_chk.IsChecked())
                 cfg.max_duration_seconds = float(self.audio_tab.trim_spin.GetValue())
                 fmt_idx = self.audio_tab.format_choice.GetSelection()
                 cfg.export_format = "wav" if fmt_idx == 0 else ("320k" if fmt_idx == 1 else "192k")
@@ -3498,8 +5060,16 @@ class GhostWaveFrame(wx.Frame):
                     cfg = GhostWaveConfig.from_encrypted_bytes(raw)
                     cfg.save()  # Store into default active vault
                     # Synchronize UI
+                    platform_keys = ["suno_v6", "google_lyria", "udio", "youtube", "tiktok", "custom"]
+                    if cfg.target_platform in platform_keys:
+                        self.audio_tab.platform_choice.SetSelection(platform_keys.index(cfg.target_platform))
                     self.audio_tab.pitch_spin.SetValue(cfg.pitch_shift_semitones)
+                    self.audio_tab.formant_spin.SetValue(cfg.formant_shift_semitones)
                     self.audio_tab.tempo_spin.SetValue(cfg.tempo_factor)
+                    self.audio_tab.reverb_spin.SetValue(round(cfg.room_reverb_wet * 100.0, 1))
+                    self.audio_tab.vocal_duck_spin.SetValue(cfg.vocal_reduction_depth)
+                    self.audio_tab.watermark_chk.SetValue(bool(cfg.enable_ai_watermark_neutralizer))
+                    self.audio_tab.psycho_chk.SetValue(bool(cfg.use_psychoacoustic_masking))
                     self.audio_tab.trim_spin.SetValue(cfg.max_duration_seconds)
                     fmt_idx = 0 if cfg.export_format == "wav" else (1 if cfg.export_format == "320k" else 2)
                     self.audio_tab.format_choice.SetSelection(fmt_idx)

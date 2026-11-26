@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-APP_VERSION = "1.6.2"
+from ghostwave.version import APP_VERSION
 
 
 # Default celebrity and artist blacklist known to trigger Suno/Udio moderation
@@ -476,6 +476,53 @@ ADLIBS: list[str] = [
 ]
 
 
+def generate_suno_style_prompt(
+    bpm: float = 0.0,
+    key: str = "",
+    mood: str = "",
+    user_genre: str = ""
+) -> str:
+    """
+    Generates structured, high-conversion Suno v4/v5/v6 and Udio style prompt tags
+    based on acoustic audio characteristics and musical features.
+    """
+    tags = []
+    genre = user_genre.strip() if user_genre else "Modern Pop"
+    tags.append(genre)
+
+    if bpm and bpm > 0:
+        if bpm < 85:
+            tempo_desc = "Slow tempo"
+        elif bpm < 115:
+            tempo_desc = "Mid-tempo"
+        elif bpm < 140:
+            tempo_desc = "Upbeat driving tempo"
+        else:
+            tempo_desc = "Fast high-energy tempo"
+        tags.append(f"{bpm:.0f} BPM ({tempo_desc})")
+
+    if key:
+        tags.append(f"Key: {key}")
+
+    if mood:
+        tags.append(mood)
+    else:
+        tags.append("Melodic, Emotional, Polished Production")
+
+    tags.append("Punchy Drums, Warm Bassline, Clean Stereo Mix")
+
+    prompt_str = f"[{', '.join(tags)}]\n\n"
+    prompt_str += "[Intro - Atmospheric Build-up]\n\n"
+    prompt_str += "[Verse 1]\n\n"
+    prompt_str += "[Pre-Chorus - Rising Energy]\n\n"
+    prompt_str += "[Chorus - Catchy Melodic Hook]\n\n"
+    prompt_str += "[Verse 2]\n\n"
+    prompt_str += "[Chorus - Full Energy]\n\n"
+    prompt_str += "[Bridge - Emotional Shift]\n\n"
+    prompt_str += "[Outro - Fade Out]"
+    return prompt_str
+
+
 # Multilingual Phonotactic Constants
 _MULTILINGUAL_DIGRAPHS: tuple[str, ...] = (
     "ng", "ny", "kh", "sy", "ch", "sh", "th", "ph", "ll", "rr", "qu"
@@ -801,6 +848,7 @@ class LyricsCloaker:
         mode: str = "scramble",
         add_vibrato_glides: bool = True,
         preserve_syllables: bool = True,
+        preserve_rhymes: bool = True,
         break_ngrams: bool = False,
         adlib_frequency: float = 0.5,
         cloud_token: str = "",
@@ -843,9 +891,13 @@ class LyricsCloaker:
                 continue
 
             tokens = re.findall(r"[\w'-]+|[^\w\s]", stripped)
+            last_word_idx = -1
+            for t_i, tok in enumerate(tokens):
+                if re.match(r"[\w'-]", tok):
+                    last_word_idx = t_i
             new_tokens = []
 
-            for token in tokens:
+            for t_idx, token in enumerate(tokens):
                 low = token.lower()
                 if not re.match(r"[\w'-]", token):
                     new_tokens.append(token)
@@ -853,8 +905,8 @@ class LyricsCloaker:
 
                 replaced = False
 
-                # 1. Semantic Synonym Mode (if explicitly requested)
-                if mode == "semantic" and low in SYLLABLE_SYNONYMS:
+                # Keep end-of-line word unchanged in semantic mode when preserve_rhymes is enabled
+                if mode == "semantic" and low in SYLLABLE_SYNONYMS and not (preserve_rhymes and t_idx == last_word_idx):
                     syl_count, syns = SYLLABLE_SYNONYMS[low]
                     rep = syns[0]
                     if token.isupper():
@@ -944,6 +996,8 @@ class LyricsCloaker:
         changes.append(
             f"Acoustic Text Scrambler ({mode.capitalize()} Mode): Disrupted orthography of {total_scrambled} tokens while preserving original song lyrics."
         )
+        if preserve_rhymes and mode == "semantic":
+            changes.append("Rhyme Preservation: Kept end-of-line rhyming words intact.")
         if add_vibrato_glides:
             changes.append("Vocal Glissando: Added vibrato inflection markers (~) on phrase cadences.")
         if adlibs_injected > 0:
@@ -987,7 +1041,7 @@ class LyricsProcessor:
     def load_blacklist(self) -> list[str]:
         """Loads blacklist from encrypted .sn vault, JSON file, or defaults."""
         try:
-            from config_manager import GhostWaveConfig
+            from ghostwave.config_manager import GhostWaveConfig
             sn_cfg = GhostWaveConfig.load()
             if sn_cfg.custom_celebrity_blacklist:
                 return sorted(list(set(sn_cfg.custom_celebrity_blacklist)), key=lambda x: (-len(x), x.lower()))
@@ -1012,7 +1066,7 @@ class LyricsProcessor:
             self.celebrity_blacklist = cleaned
 
             try:
-                from config_manager import GhostWaveConfig
+                from ghostwave.config_manager import GhostWaveConfig
                 sn_cfg = GhostWaveConfig.load()
                 sn_cfg.custom_celebrity_blacklist = cleaned
                 sn_cfg.save()
@@ -1248,6 +1302,7 @@ class LyricsProcessor:
         cloak_mode: str = "scramble",
         add_vibrato_glides: bool = True,
         preserve_syllables: bool = True,
+        preserve_rhymes: bool = True,
         break_ngrams: bool = False,
         adlib_frequency: float = 0.5,
         cloud_token: str = "",
@@ -1297,6 +1352,7 @@ class LyricsProcessor:
                 mode=cloak_mode,
                 add_vibrato_glides=add_vibrato_glides,
                 preserve_syllables=preserve_syllables,
+                preserve_rhymes=preserve_rhymes,
                 break_ngrams=break_ngrams,
                 adlib_frequency=adlib_frequency,
                 cloud_token=cloud_token,

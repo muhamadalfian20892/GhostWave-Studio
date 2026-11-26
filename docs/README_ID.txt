@@ -1,4 +1,4 @@
-GHOSTWAVE STUDIO (VERSI 1.6.2)
+GHOSTWAVE STUDIO (VERSI 1.7.0)
 PANDUAN PENGGUNA DAN PETUNJUK MEMULAI
 
 Situs Web Asli: http://technokerslab.blogspot.com/
@@ -88,6 +88,102 @@ dan setelah selesai, Anda mendapatkan berkas audio bersih yang siap diunggah.
 Jika Anda perlu membatalkan di tengah jalan, cukup klik tombol "Batal".
 
 
+PANDUAN LENGKAP FITUR BARU VERSI 1.7.0 (MODULAR & FLEKSIBEL)
+
+Di versi 1.7.0, GhostWave Studio dibuat jauh lebih ramah untuk siapa saja. Anda tidak
+lagi terkurung di mode kaku. Sekarang Anda bisa mengatur sendiri setiap elemen
+menggunakan penggeser (slider) dan kotak centang sesuai kebutuhan lagu Anda.
+
+1. Preset Platform Sasaran
+Di bagian atas panel Audio, Anda bisa memilih tujuan unggahan Anda:
+- Suno v4-v6 Cover Mode: Dioptimalkan khusus untuk melewati pemindai terbaru Suno
+  (Audible Magic & pencocokan melodi CQT).
+- Google Lyria 3.5: Mengaktifkan pembersih watermark SynthID dan difusi fase.
+- Udio AI: Menyesuaikan pergeseran tempo dan modulasi harmonik untuk arsitektur Udio.
+- YouTube Content ID: Berfokus pada pergeseran puncak frekuensi dan akustik ruangan.
+- TikTok & Reels: Penyesuaian cepat untuk video pendek.
+- Custom (Pengaturan Mandiri): Memberi kebebasan penuh bagi Anda untuk mengatur semua slider.
+
+2. Penggeser (Slider) Modular yang Mudah Dipahami
+- Pergeseran Nada (Pitch Shift): Menggeser tinggi rendah nada lagu dalam satuan
+  semitone (misalnya +2 atau -2). Menggeser 2 nada membuat lagu tetap terdengar
+  merdu dan alami, tetapi membuat algoritma pencocokan melodi langsung gagal mengenali lagu.
+- Karakter Vokal (Formant Shift): Mengubah warna suara vokal (menjadikannya sedikit
+  lebih tebal atau lebih ramping) tanpa mengubah nada lagu sama sekali. Ini sangat
+  efektif mengelabui pemindai vokal AI.
+- Tempo Lagu (Speed / BPM): Memperlambat atau mempercepat lagu sedikit saja
+  (misalnya 98% atau 103%). Perubahan sekecil ini hampir tidak terasa di telinga,
+  tetapi memutus sinkronisasi garis waktu pemindai otomatis.
+- Gema Ruang Studio (Reverb): Memberikan sedikit pantulan akustik alami seolah-olah
+  lagu direkam ulang di dalam studio fisik.
+- Redam Vokal Tengah (Vocal Ducking): Menurunkan volume vokal utama di bagian tengah
+  stereo sehingga instrumen pengiring lebih menonjol.
+
+3. Kotak Centang Modular
+- Bersihkan Watermark AI (SynthID): Jika audio Anda berasal atau melewati model AI
+  (seperti Google Lyria atau pembuat vokal AI), centang opsi ini untuk menetralkan
+  jejak frekuensi tak terdengar yang ditanam oleh sistem watermark.
+- Topeng Psikoakustik (Masking): Menyisipkan titik sinyal pengalih di frekuensi yang
+  secara alami tidak bisa didengar oleh telinga manusia (berdasarkan ambang pendengaran
+  Terhardt ATH). Pemindai akan kebingungan membaca pola lagu, sementara kualitas audio
+  tetap jernih di telinga Anda.
+- Pelembut Artikulasi (Whisper Scrambler): Mengaburkan desah konsonan vokal agar
+  pemindai lirik otomatis (seperti OpenAI Whisper) kesulitan mentranskripsi kata.
+- Potong Vokal Tengah (Vocal Cut): Menghilangkan vokal tengah secara langsung.
+
+4. Deteksi Tangga Nada (Key) dan Ketukan (BPM) Otomatis
+Begitu Anda memilih berkas lagu, GhostWave Studio akan langsung mendeteksi tangga nada
+dan temponya, lalu menampilkannya di atas panel (misalnya: "Tangga Nada: G Major | Tempo: 124 BPM").
+Di sebelahnya, ada tombol "[Gunakan Rekomendasi Nada]". Jika diklik, aplikasi akan
+otomatis menggeser slider nada ke +2 atau -2 semitone yang paling selaras secara musikal.
+
+5. Visualizer Gelombang Ganda & Titik Pengecoh
+Di bawah informasi file, terdapat visualizer yang menampilkan:
+- Garis Biru: Gelombang audio asli Anda.
+- Garis Hijau Zamrud: Gelombang audio yang sudah diproses.
+- Titik Emas: Lokasi titik pengecoh (decoy peaks) yang disisipkan untuk membuyarkan sidik jari.
+Tampilan ini juga dilengkapi deskripsi teks yang bisa dibaca oleh pembaca layar.
+
+6. Pemutar Uji Dengar Langsung (A/B & Delta Player)
+Setelah audio diproses, Anda tidak perlu repot membuka pemutar musik eksternal. Gunakan
+tombol pemutar di panel:
+- [Putar Asli]: Mendengarkan suara sebelum diproses.
+- [Putar Hasil]: Mendengarkan suara sesudah diproses.
+- [Putar Delta]: Mendengarkan HANYA perbedaan atau efek yang ditambahkan oleh GhostWave Studio.
+- [Stop]: Menghentikan pemutaran seketika.
+
+7. Simulator Keamanan Sebelum Unggah (Pre-Flight Simulator - Alt+F)
+Sebelum Anda membuang waktu mengunggah file ke platform, buka simulator ini lewat tombol
+"Uji Keamanan Sebelum Unggah" atau tekan Alt+F. Simulator akan memeriksa file Anda dari
+empat sisi:
+- Kesamaan Melodi (CQT Chroma)
+- Kesamaan Sidik Jari Titik Puncak (Acoustic Landmarks)
+- Keberadaan Jejak AI (Watermark SynthID / AudioSeal)
+- Pergeseran Harmoni
+Anda akan mendapatkan Skor Keamanan (0-100%) dan saran perbaikan langsung yang ditulis
+dalam bahasa santai dan mudah dipahami.
+
+8. Antrean Berkas Banyak (Batch) & Pemantau Folder (Folder Watcher - Ctrl+Shift+B)
+Punya banyak lagu yang ingin dibersihkan sekaligus? Tekan Ctrl+Shift+B:
+- Tab Antrean Pemrosesan: Tambahkan puluhan lagu sekaligus, centang apakah ingin
+  langsung dipotong per 22 detik, lalu klik "Mulai Pemrosesan Antrean".
+- Tab Pemantau Folder: Tentukan folder masuk dan folder keluar. Aplikasi akan terus
+  memantau folder tersebut di latar belakang. Setiap kali Anda memasukkan lagu baru ke
+  folder masuk, aplikasi akan otomatis memprosesnya dan menyimpannya di folder keluar.
+
+9. Pembuat Prompt Gaya Musik & Struktur Lagu Suno / Udio
+Di tab Sanitasi Lirik (Ctrl+Tab), ada tombol baru: "[Buat Prompt Gaya Suno / Udio...]".
+Fitur ini membantu Anda merangkai deskripsi gaya lagu (misalnya: "Indie Pop, 120 BPM, G Major, Upbeat")
+dan menyediakan tombol cepat untuk menyisipkan tag struktur lagu seperti:
+[Intro], [Verse 1], [Chorus - Catchy Melodic Hook], [Drop], [Bridge], dan [Outro].
+Hasilnya bisa langsung disalin atau disisipkan ke kotak lirik Anda.
+
+10. Penjaga Rima pada Sanitasi Lirik
+Di tab Sanitasi Lirik, terdapat kotak centang baru: "Pertahankan rima akhir kalimat".
+Saat aktif, sanitasi lirik tidak akan mengubah kata-kata di ujung baris yang bersajak,
+sehingga irama lagu tetap enak dinyanyikan oleh model AI.
+
+
 RAHASIA MENGUNGGAH KE SUNO AGAR TIDAK DIBLOKIR
 
 Dari pengujian intensif selama berbulan-bulan, saya menemukan bahwa cara Anda
@@ -150,19 +246,22 @@ papan klip Anda.
 
 Pintasan utama yang perlu diingat:
 Tab dan Shift+Tab: Pindah maju dan mundur antar tombol atau input.
-Ctrl+Tab dan Ctrl+Shift+Tab: Beralih antara tab Audio dan tab Lirik.
-Alt+B: Memilih berkas audio masukan.
-Alt+P: Memproses dan mengekspor audio.
-Alt+E: Membuka laporan Audit Kemiripan Audio.
+Alt+1 / Alt+2 / Ctrl+Tab: Beralih antara tab Audio Sanitizer dan Lyrics Sanitizer.
+Alt+B atau Ctrl+O: Memilih berkas audio masukan.
+Alt+P atau Ctrl+P: Memproses dan mengekspor audio.
+Alt+F: Membuka Simulator Keamanan Sebelum Unggah (Pre-Flight Evasion Simulator).
+Alt+E atau Ctrl+E: Membuka laporan Audit Kemiripan Audio.
 Alt+S: Di tab Audio untuk membuka ABS Audio Slicer. Di tab Lirik untuk memproses lirik.
-Alt+A: Membuka pengaturan Cloud API.
+Alt+A atau Ctrl+K: Membuka pengaturan Cloud API.
 Ctrl+T: Membuka Pusat Tiket Dukungan.
 Ctrl+U: Membuka pemotong ABS Audio Slicer dari tab mana saja.
+Ctrl+Shift+B: Membuka Antrean Pemrosesan Batch dan Pemantau Folder Otomatis.
 Ctrl+B: Membuka editor daftar hitam musisi dan selebritas.
 Ctrl+H atau Shift+F1: Membuka panduan unggah Suno.
 Ctrl+Shift+S: Mengekspor profil pengaturan (.sn).
 Ctrl+Shift+O: Mengimpor profil pengaturan (.sn).
 Ctrl+A: Memilih seluruh teks di dalam kotak teks.
+F1: Membuka Panduan Aksesibilitas dan daftar pintasan.
 F2: Membuka jendela Catatan Rilis / Changelog terbaru (tersedia offline dan online).
 Escape: Menutup jendela dialog yang sedang aktif.
 

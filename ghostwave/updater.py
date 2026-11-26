@@ -24,8 +24,10 @@ from typing import Callable, Optional
 
 import wx
 
+from ghostwave.version import APP_VERSION
+
 try:
-    from i18n import tr
+    from ghostwave.i18n import tr
 except ImportError:
     def tr(key: str, **kwargs) -> str:
         fallback = {
@@ -52,11 +54,10 @@ except ImportError:
             return fallback
 
 
-APP_VERSION = "1.6.2"
 GITHUB_REPO = "muhamadalfian20892/GhostWave-Studio"
 GITHUB_API_LATEST = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 GITHUB_RAW_CHANGELOG = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/changelog.txt"
-DEFAULT_USER_AGENT = "GhostWave-Studio-Updater/1.6.2"
+DEFAULT_USER_AGENT = f"GhostWave-Studio-Updater/{APP_VERSION}"
 
 
 def normalize_version(v_str: str) -> tuple[int, ...]:
@@ -177,7 +178,7 @@ def get_local_changelog_path() -> str:
         bundle_cl = os.path.join(sys._MEIPASS, "changelog.txt")
         if os.path.exists(bundle_cl):
             return bundle_cl
-    dev_cl = os.path.join(os.path.dirname(os.path.abspath(__file__)), "changelog.txt")
+    dev_cl = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "changelog.txt")
     if os.path.exists(dev_cl):
         return dev_cl
     return os.path.abspath("changelog.txt")
